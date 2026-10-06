@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "363309530374",
+    "firebase_url": "https://dashkart-game-default-rtdb.firebaseio.com",
+    "project_id": "dashkart-game",
+    "storage_bucket": "dashkart-game.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:363309530374:android:3440861c447f35631c7287",
+        "android_client_info": {
+          "package_name": "com.example.dashkart"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAF9Yrwa6BcdZxfNDHwX3qfu-bJ-MHiWPY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:363309530374:android:d0de74ce4a2c2bd81c7287",
+        "android_client_info": {
+          "package_name": "com.nammaflutter.dashkart"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAF9Yrwa6BcdZxfNDHwX3qfu-bJ-MHiWPY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
