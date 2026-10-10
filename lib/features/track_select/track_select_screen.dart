@@ -373,14 +373,6 @@ const _trackThemes = <String, _TrackTheme>{
     groundColor: Color(0xFF388E3C),
     curbColor: Color(0xFFFF3333),
   ),
-  'neon-circuit': _TrackTheme(
-    skyTop: Color(0xFF7B2CBF),
-    skyBottom: Color(0xFF240046),
-    rayColor: Color(0x3300F5D4),
-    skylineColor: Color(0xFF10002B),
-    groundColor: Color(0xFF1E152A),
-    curbColor: Color(0xFF00F5D4),
-  ),
   'desert-rush': _TrackTheme(
     skyTop: Color(0xFFFFB703),
     skyBottom: Color(0xFFFB8500),
@@ -396,14 +388,6 @@ const _trackThemes = <String, _TrackTheme>{
     skylineColor: Color(0xFF4A7CB5),
     groundColor: Color(0xFF5D93CE),
     curbColor: Color(0xFFFF2A6D),
-  ),
-  'cyber-coast': _TrackTheme(
-    skyTop: Color(0xFFFF5D8F),
-    skyBottom: Color(0xFF6A0DAD),
-    rayColor: Color(0x3300FFFF),
-    skylineColor: Color(0xFF2E0854),
-    groundColor: Color(0xFF241442),
-    curbColor: Color(0xFF00F5FF),
   ),
 };
 

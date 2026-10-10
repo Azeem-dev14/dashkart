@@ -162,9 +162,12 @@ class _MultiplayerScreenState extends ConsumerState<MultiplayerScreen> {
                   _error = null;
                 }),
               ),
-              _Mode.lobby => _LobbyView(
-                session: _session!,
+              _Mode.lobby => MultiplayerLobby(
+                roomCode: _session!.roomCode,
+                isHost: _session!.role == MultiplayerRole.host,
                 myName: player.name,
+                meReady: _session!.me.ready,
+                opponent: _session!.opponent,
                 onReady: () => _session!.setReady(true),
                 onStart: _session!.role == MultiplayerRole.host
                     ? _session!.startRace
@@ -173,6 +176,54 @@ class _MultiplayerScreenState extends ConsumerState<MultiplayerScreen> {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The screen's one surface: a blue panel, so text sits on a controlled
+/// ground instead of directly on the pale lobby backdrop, where the old
+/// description was close to unreadable.
+class _View extends StatelessWidget {
+  const _View({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = DashBreakpoint.of(context).isCompact;
+    return BrawlPanel(
+      padding: EdgeInsets.fromLTRB(
+        compact ? 16 : 22,
+        compact ? 14 : 20,
+        compact ? 16 : 22,
+        compact ? 16 : 22,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// A failure message, in the red every other error in the game uses.
+class _ErrorLine extends StatelessWidget {
+  const _ErrorLine(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: DashSpace.x3),
+      child: BrawlInkText(
+        message,
+        fontSize: 13,
+        weight: BrawlInkWeight.medium,
+        color: const Color(0xFFFF8A9A),
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -193,41 +244,33 @@ class _ChooseView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    final compact = DashBreakpoint.of(context).isCompact;
+    final height = compact ? 46.0 : 52.0;
+    return _View(
       children: [
-        Text(
+        BrawlInkText(
           'Race a friend head-to-head. Host a room and share the code, or '
           'join one someone else started.',
-          style: DashType.body,
+          fontSize: compact ? 13 : 14,
+          weight: BrawlInkWeight.light,
+          color: BrawlPanel.softText,
           textAlign: TextAlign.center,
+          letterSpacing: 0.3,
         ),
-        const SizedBox(height: DashSpace.x6),
-        DashButton(
-          label: 'Host a Race',
-          icon: DashIcons.steeringWheel,
-          variant: DashButtonVariant.turbo,
-          expand: true,
-          glow: true,
-          loading: busy,
+        SizedBox(height: compact ? DashSpace.x4 : DashSpace.x5),
+        BrawlActionButton(
+          label: busy ? 'CREATING ROOM…' : 'HOST A RACE',
+          height: height,
           onPressed: busy ? null : onHost,
         ),
-        const SizedBox(height: DashSpace.x3),
-        DashButton(
-          label: 'Join a Race',
-          icon: DashIcons.key,
-          variant: DashButtonVariant.ghost,
-          expand: true,
+        SizedBox(height: compact ? DashSpace.x2 : DashSpace.x3),
+        BrawlActionButton(
+          label: 'JOIN A RACE',
+          tone: BrawlButtonTone.blue,
+          height: height,
           onPressed: busy ? null : onJoin,
         ),
-        if (error != null) ...[
-          const SizedBox(height: DashSpace.x4),
-          Text(
-            error!,
-            style: DashType.bodySm.copyWith(color: DashColors.racingRed),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        if (error != null) _ErrorLine(error!),
       ],
     );
   }
@@ -252,40 +295,36 @@ class _JoinCodeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    final compact = DashBreakpoint.of(context).isCompact;
+    final height = compact ? 46.0 : 52.0;
+    return _View(
       children: [
-        Text('Enter the room code', style: DashType.h3),
-        const SizedBox(height: DashSpace.x5),
+        Center(
+          child: BrawlTitleText(
+            'ENTER THE ROOM CODE',
+            fontSize: compact ? 20 : 24,
+          ),
+        ),
+        SizedBox(height: compact ? DashSpace.x3 : DashSpace.x4),
         _CodeField(
           controller: controller,
           focusNode: focusNode,
           onSubmitted: onJoin,
         ),
-        const SizedBox(height: DashSpace.x5),
-        DashButton(
-          label: 'Join',
-          icon: DashIcons.play,
-          variant: DashButtonVariant.turbo,
-          expand: true,
-          loading: busy,
+        SizedBox(height: compact ? DashSpace.x3 : DashSpace.x4),
+        BrawlActionButton(
+          label: busy ? 'JOINING…' : 'JOIN',
+          height: height,
           onPressed: busy ? null : onJoin,
         ),
-        const SizedBox(height: DashSpace.x3),
-        DashButton(
-          label: 'Back',
-          variant: DashButtonVariant.ghost,
-          expand: true,
+        SizedBox(height: compact ? DashSpace.x2 : DashSpace.x3),
+        BrawlActionButton(
+          label: 'BACK',
+          tone: BrawlButtonTone.grey,
+          height: height,
           onPressed: busy ? null : onBack,
         ),
-        if (error != null) ...[
-          const SizedBox(height: DashSpace.x4),
-          Text(
-            error!,
-            style: DashType.bodySm.copyWith(color: DashColors.racingRed),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        if (error != null) _ErrorLine(error!),
       ],
     );
   }
@@ -294,6 +333,9 @@ class _JoinCodeView extends StatelessWidget {
 /// A 5-character room code entry. Raw [EditableText], not a Material
 /// [TextField] — DashKart composes every control from tokens rather than
 /// pulling in Material chrome; see [DashSlider] for the same choice.
+///
+/// Drawn as a sunken tray set into the panel: dark, black-bordered, with the
+/// code in the same inked face as every other title.
 class _CodeField extends StatelessWidget {
   const _CodeField({
     required this.controller,
@@ -312,9 +354,9 @@ class _CodeField extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: DashSpace.x5),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: DashColors.surfaceSunken,
-        borderRadius: DashRadius.mdAll,
-        border: Border.all(color: DashColors.stroke, width: DashStroke.thick),
+        color: BrawlPanel.bevel,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DashColors.pureBlack, width: 3),
       ),
       child: EditableText(
         controller: controller,
@@ -323,10 +365,15 @@ class _CodeField extends StatelessWidget {
         textAlign: TextAlign.center,
         textCapitalization: TextCapitalization.characters,
         maxLines: 1,
-        style: DashType.lap.copyWith(fontSize: 28, letterSpacing: 10),
-        cursorColor: DashColors.textPrimary,
-        backgroundCursorColor: DashColors.surfaceSunken,
-        selectionColor: DashColors.textTertiary.withValues(alpha: 0.4),
+        style: const TextStyle(
+          fontFamily: 'LilitaOne',
+          fontSize: 32,
+          letterSpacing: 12,
+          color: BrawlPanel.gold,
+        ),
+        cursorColor: BrawlPanel.gold,
+        backgroundCursorColor: BrawlPanel.bevel,
+        selectionColor: BrawlPanel.softText.withValues(alpha: 0.35),
         onSubmitted: (_) => onSubmitted(),
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
@@ -341,16 +388,32 @@ class _CodeField extends StatelessWidget {
   }
 }
 
-class _LobbyView extends StatelessWidget {
-  const _LobbyView({
-    required this.session,
+/// The room before the race: the code to share, both players' slots, and the
+/// one button that moves things on — Start for the host, Ready for the guest.
+///
+/// Takes plain values rather than a live session, so it can be laid out and
+/// tested without a server behind it.
+class MultiplayerLobby extends StatelessWidget {
+  const MultiplayerLobby({
+    super.key,
+    required this.roomCode,
+    required this.isHost,
     required this.myName,
+    required this.meReady,
+    required this.opponent,
     required this.onReady,
     required this.onStart,
   });
 
-  final MultiplayerSession session;
+  final String roomCode;
+  final bool isHost;
   final String myName;
+
+  /// Whether this player has pressed Ready (only meaningful for the guest).
+  final bool meReady;
+
+  /// The other player's slot; empty until someone joins.
+  final RacerTelemetry opponent;
   final VoidCallback onReady;
 
   /// Non-null only for the host — the guest has no Start button, they wait.
@@ -359,77 +422,70 @@ class _LobbyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = DashBreakpoint.of(context).isCompact;
-    final isHost = session.role == MultiplayerRole.host;
-    final opponent = session.opponent;
+    final height = compact ? 44.0 : 52.0;
+    final canStart = opponent.isPresent && opponent.ready;
 
-    return DashCard(
-      variant: DashCardVariant.raised,
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? DashSpace.x4 : DashSpace.x5,
-        vertical: compact ? DashSpace.x3 : DashSpace.x5,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Column(
-              children: [
-                Text('ROOM CODE', style: DashType.label),
-                SizedBox(height: compact ? DashSpace.x1 : DashSpace.x2),
-                DashOutlinedText(
-                  session.roomCode,
-                  style: DashType.lap.copyWith(
-                    fontSize: compact ? 30 : 40,
-                    letterSpacing: compact ? 6 : 10,
-                  ),
-                ),
-                SizedBox(height: compact ? 2 : DashSpace.x2),
-                Text(
-                  'Share this code with your friend',
-                  style: DashType.bodySm,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+    return _View(
+      children: [
+        Center(
+          child: BrawlInkText(
+            'ROOM CODE',
+            fontSize: compact ? 12 : 13,
+            weight: BrawlInkWeight.heavy,
+            color: BrawlPanel.softText,
+            letterSpacing: 1.5,
           ),
-          SizedBox(height: compact ? DashSpace.x3 : DashSpace.x6),
-          _RacerRow(name: myName, tag: 'YOU', ready: true, compact: compact),
-          SizedBox(height: compact ? DashSpace.x2 : DashSpace.x3),
-          _RacerRow(
-            name: opponent.isPresent ? opponent.name : null,
-            tag: isHost ? 'GUEST' : 'HOST',
-            ready: opponent.isPresent && (isHost ? opponent.ready : true),
-            compact: compact,
+        ),
+        SizedBox(height: compact ? 2 : DashSpace.x1),
+        Center(
+          child: BrawlInkText(
+            roomCode,
+            fontSize: compact ? 34 : 44,
+            weight: BrawlInkWeight.heavy,
+            color: BrawlPanel.gold,
+            letterSpacing: compact ? 8 : 12,
           ),
-          SizedBox(height: compact ? DashSpace.x3 : DashSpace.x6),
-          if (isHost)
-            DashButton(
-              label: 'Start Race',
-              icon: DashIcons.play,
-              variant: DashButtonVariant.turbo,
-              expand: true,
-              glow: opponent.ready,
-              size: compact ? DashButtonSize.sm : DashButtonSize.md,
-              onPressed: opponent.isPresent && opponent.ready ? onStart : null,
-            )
-          else
-            DashButton(
-              label: session.me.ready ? 'Waiting for host…' : 'Ready',
-              icon: DashIcons.checkmark,
-              variant: session.me.ready
-                  ? DashButtonVariant.ghost
-                  : DashButtonVariant.success,
-              expand: true,
-              size: compact ? DashButtonSize.sm : DashButtonSize.md,
-              onPressed: session.me.ready ? null : onReady,
-            ),
-        ],
-      ),
+        ),
+        Center(
+          child: BrawlInkText(
+            'Share this code with your friend',
+            fontSize: compact ? 11 : 12,
+            weight: BrawlInkWeight.light,
+            color: BrawlPanel.softText,
+            letterSpacing: 0.3,
+          ),
+        ),
+        SizedBox(height: compact ? DashSpace.x3 : DashSpace.x4),
+        _RacerRow(name: myName, tag: 'YOU', ready: true, compact: compact),
+        SizedBox(height: compact ? DashSpace.x2 : DashSpace.x3),
+        _RacerRow(
+          name: opponent.isPresent ? opponent.name : null,
+          tag: isHost ? 'GUEST' : 'HOST',
+          ready: opponent.isPresent && (isHost ? opponent.ready : true),
+          compact: compact,
+        ),
+        SizedBox(height: compact ? DashSpace.x3 : DashSpace.x4),
+        if (isHost)
+          BrawlActionButton(
+            label: canStart ? 'START RACE' : 'WAITING FOR GUEST…',
+            tone: canStart ? BrawlButtonTone.green : BrawlButtonTone.grey,
+            height: height,
+            onPressed: canStart ? onStart : null,
+          )
+        else
+          BrawlActionButton(
+            label: meReady ? 'WAITING FOR HOST…' : 'READY',
+            tone: meReady ? BrawlButtonTone.grey : BrawlButtonTone.green,
+            height: height,
+            onPressed: meReady ? null : onReady,
+          ),
+      ],
     );
   }
 }
 
+/// One player's slot in the lobby: a sunken tray with their role, their name,
+/// and a green tick once they are ready.
 class _RacerRow extends StatelessWidget {
   const _RacerRow({
     required this.name,
@@ -446,38 +502,42 @@ class _RacerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final empty = name == null;
     return Container(
-      height: compact ? 40 : 52,
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? DashSpace.x3 : DashSpace.x4,
-      ),
+      height: compact ? 42 : 52,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
       decoration: BoxDecoration(
-        color: DashColors.surfaceSunken,
-        borderRadius: DashRadius.mdAll,
-        border: Border.all(color: DashColors.stroke),
+        color: BrawlPanel.bevel,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DashColors.pureBlack, width: 3),
       ),
       child: Row(
         children: [
-          Text(tag, style: DashType.label),
-          SizedBox(width: compact ? DashSpace.x2 : DashSpace.x3),
+          SizedBox(
+            width: compact ? 52 : 64,
+            child: BrawlInkText(
+              tag,
+              fontSize: compact ? 11 : 12,
+              weight: BrawlInkWeight.heavy,
+              color: BrawlPanel.gold,
+              letterSpacing: 1,
+            ),
+          ),
           Expanded(
-            child: Text(
-              name ?? 'Waiting for a racer…',
-              style: DashType.body.copyWith(
-                color: name == null
-                    ? DashColors.textTertiary
-                    : DashColors.textPrimary,
-                fontStyle: name == null ? FontStyle.italic : FontStyle.normal,
-                fontSize: compact ? 13 : null,
-              ),
+            child: BrawlInkText(
+              (name ?? 'Waiting for a racer…').toUpperCase(),
+              fontSize: compact ? 14 : 16,
+              weight: empty ? BrawlInkWeight.light : BrawlInkWeight.heavy,
+              color: empty ? BrawlPanel.softText : DashColors.textPrimary,
+              fontStyle: empty ? FontStyle.italic : FontStyle.normal,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (name != null && ready)
+          if (!empty && ready)
             DashIcon(
               DashIcons.checkmark,
-              size: DashIconSize.sm,
+              size: DashIconSize.md,
               color: DashColors.neonGreen,
             ),
         ],

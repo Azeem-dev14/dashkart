@@ -26,6 +26,7 @@ class MainMenuScreen extends ConsumerStatefulWidget {
 
   final VoidCallback onRace;
   final VoidCallback onKarts;
+
   final VoidCallback onTracks;
   final VoidCallback onSettings;
   final VoidCallback onShop;
@@ -231,6 +232,9 @@ class _KartStage extends StatelessWidget {
           modelPath: kart.modelPath,
           tint: kart.livery,
           spin: true,
+          // A slow, unhurried turn: the menu is somewhere to rest, and the
+          // kart is the backdrop rather than the thing being inspected.
+          spinPeriod: const Duration(seconds: 20),
           cameraTargetY: 0.725,
           cameraEyeY: 0.88,
         ),

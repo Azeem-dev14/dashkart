@@ -51,7 +51,6 @@ class RaceModeScreen extends StatelessWidget {
                 ],
                 emblemGlow: const Color(0x778A2BE2),
                 icon: DashIcons.steeringWheel,
-                chipsText: '🏁 3 LAPS',
                 subtitle: 'Race the circuit solo anytime',
                 buttonLabel: 'PLAY SOLO',
                 buttonGradient: const [Color(0xFFFFDD00), Color(0xFFFFAE00)],
@@ -74,7 +73,6 @@ class RaceModeScreen extends StatelessWidget {
                 ],
                 emblemGlow: const Color(0x77FF4500),
                 icon: DashIcons.target,
-                chipsText: 'HOST / JOIN',
                 subtitle: 'Head-to-head with friends',
                 buttonLabel: 'PLAY ONLINE',
                 buttonGradient: const [Color(0xFF00E65A), Color(0xFF00A83A)],
@@ -101,7 +99,6 @@ class _BrawlModeCard extends StatelessWidget {
     required this.emblemGradient,
     required this.emblemGlow,
     required this.icon,
-    required this.chipsText,
     required this.subtitle,
     required this.buttonLabel,
     required this.buttonGradient,
@@ -114,7 +111,6 @@ class _BrawlModeCard extends StatelessWidget {
   final List<Color> emblemGradient;
   final Color emblemGlow;
   final DashIcons icon;
-  final String chipsText;
   final String subtitle;
   final String buttonLabel;
   final List<Color> buttonGradient;
@@ -221,9 +217,6 @@ class _BrawlModeCard extends StatelessWidget {
                               glowColor: emblemGlow,
                               compact: compact,
                             ),
-
-                            // Mode feature chips
-                            _ModeChips(text: chipsText, compact: compact),
 
                             // Subtitle
                             Text(
@@ -367,51 +360,6 @@ class _ModeEmblem extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ModeChips extends StatelessWidget {
-  const _ModeChips({required this.text, required this.compact});
-
-  final String text;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8.0 : 12.0,
-        vertical: compact ? 3.0 : 4.0,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xCC081224),
-        borderRadius: BorderRadius.circular(4.0),
-        border: Border.all(color: DashColors.pureBlack, width: 1.8),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x55000000),
-            offset: Offset(0, 2.0),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontFamily: 'LilitaOne',
-          fontSize: compact ? 10.0 : 11.0,
-          letterSpacing: 0.4,
-          color: const Color(0xFF3DF2FF),
-          shadows: const [
-            Shadow(
-              color: DashColors.pureBlack,
-              offset: Offset(1.0, 1.0),
-              blurRadius: 0,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

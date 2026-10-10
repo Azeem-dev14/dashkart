@@ -5,6 +5,7 @@ import 'package:flutter_scene/scene.dart';
 import 'package:dashkart/data/catalog.dart';
 import 'package:dashkart/data/player.dart';
 import 'package:dashkart/features/race/scene/race_scene.dart';
+import 'package:dashkart/features/race/scene/turbo_icon.dart';
 import 'package:dashkart/features/race/scene/scene3d.dart';
 import 'package:dashkart/features/settings/settings_screen.dart';
 
@@ -21,6 +22,28 @@ class LoadingScreen extends ConsumerStatefulWidget {
   /// Custom loading image asset path. Replace this asset in the future with any artwork.
   static const String loadingSplashAsset =
       'assets/images/splash/loading_splash.png';
+
+  /// Every 3D model the game can ask for once the menu is up.
+  ///
+  /// Derived from the catalogue rather than hand-listed, so adding a kart
+  /// or circuit is picked up here automatically and cannot be
+  /// forgotten — `loading_screen_test.dart` asserts exactly that, and that
+  /// every path resolves to a real asset.
+  ///
+  /// `loadScene` caches the realized template per path and this screen never
+  /// releases its claim, so these stay resident for the process's lifetime:
+  /// the race, the kart viewer and the podium all get a cache hit instead of
+  /// parsing and uploading a model while the player waits.
+  static List<String> assetPaths() {
+    final paths = <String>{
+      RaceScene.roadModelPath,
+      for (final kart in Catalog.karts) kart.modelPath,
+      for (final track in Catalog.tracks)
+        for (final prop in RaceScene.propsForTrack(track.id))
+          'assets/models/environment/$prop.glb',
+    };
+    return paths.toList(growable: false);
+  }
 
   @override
   ConsumerState<LoadingScreen> createState() => _LoadingScreenState();
@@ -41,23 +64,6 @@ class _LoadingScreenState extends ConsumerState<LoadingScreen> {
     precacheImage(const AssetImage(LoadingScreen.loadingSplashAsset), context);
   }
 
-  List<String> _assetPaths() {
-    final paths = <String>{
-      RaceScene.roadModelPath,
-      RaceScene.barrierModelPath,
-      for (final kart in Catalog.karts) kart.modelPath,
-      for (final racer in Catalog.racers) ...[
-        racer.modelPath,
-        if (racer.accessory != null)
-          'assets/models/characters/${racer.accessory}.glb',
-      ],
-      for (final track in Catalog.tracks)
-        for (final prop in RaceScene.propsForTrack(track.id))
-          'assets/models/environment/$prop.glb',
-    };
-    return paths.toList(growable: false);
-  }
-
   Future<void> _preload() async {
     final start = DateTime.now();
 
@@ -73,14 +79,45 @@ class _LoadingScreenState extends ConsumerState<LoadingScreen> {
       return;
     }
 
-    final paths = _assetPaths();
-    for (var i = 0; i < paths.length; i++) {
-      try {
-        await loadScene(paths[i]);
-      } catch (_) {}
-      if (!mounted) return;
-      setState(() => _progress = (i + 1) / paths.length);
+    // Loaded together rather than one after another: these are independent
+    // reads, and the registry already de-duplicates concurrent loads of the
+    // same path, so the wait is the slowest asset instead of their sum.
+    final paths = LoadingScreen.assetPaths();
+    final failures = <String>[];
+    var done = 0;
+    await Future.wait(
+      paths.map((path) async {
+        try {
+          await loadScene(path);
+        } catch (error) {
+          failures.add('$path ($error)');
+        }
+        if (!mounted) return;
+        setState(() => _progress = ++done / paths.length);
+      }),
+    );
+
+    // The turbo pickup's face is drawn from the control's own SVGs and
+    // uploaded as a texture; built here, the first race does not stall on it.
+    try {
+      await TurboIcon.load();
+    } catch (error) {
+      failures.add('turbo pickup icon ($error)');
     }
+
+    // Never swallow a failed preload. The game still runs without it, which
+    // is exactly why it has to be loud: the cost reappears later as a stall
+    // mid-race, with nothing to point at.
+    assert(() {
+      if (failures.isNotEmpty) {
+        debugPrint(
+          'LoadingScreen: ${failures.length} of ${paths.length} assets failed '
+          'to preload and will be loaded again on demand:\n  '
+          '${failures.join('\n  ')}',
+        );
+      }
+      return true;
+    }());
 
     // Ensure smooth minimum display so image doesn't abruptly flash
     final elapsed = DateTime.now().difference(start);

@@ -6,10 +6,7 @@ import 'package:dashkart/core/widgets/components.dart';
 /// The Brawl-style screen frame: [BrawlLobbyBackdrop], notch-aware margins,
 /// and a [DashBrawlAppBar], with [child] filling the rest.
 ///
-/// This is [DashScaffold]'s sibling for the app's Brawl-replica screens
-/// (Main Menu, Kart Detail, and — per that pairing being "the app's theme" —
-/// every screen aligned to match them since). Reach for [DashScaffold]
-/// instead only where a screen deliberately keeps the older look.
+/// The frame every menu screen shares: Main Menu, Kart Detail and the rest.
 class DashBrawlScreen extends StatelessWidget {
   const DashBrawlScreen({
     super.key,

@@ -35,8 +35,6 @@ dependencies:
   flutter_svg: ^2.3.0           # Kenney UI/icon/control assets ship as SVG
   shared_preferences: ^2.5.5    # settings, progress, unlocks
 
-  cupertino_icons: ^1.0.8
-
   # --- Multiplayer -----------------------------------------------------------
   # Realtime Database, not Firestore: room state is small and changes a lot
   # (steering position at ~10Hz per racer), which is what RTDB is built for.
@@ -57,7 +55,9 @@ dev_dependencies:
 # in docs/licenses/ and shown on Settings ▸ Licenses.
 
 flutter:
-  uses-material-design: true
+  # Off: the app draws everything itself (WidgetsApp, no Material widgets, no
+  # `Icons.*`), so the 1.6 MB Material icon font would ship unused.
+  uses-material-design: false
 
   # Every directory below is pruned to exactly what lib/ references. Adding an
   # asset means adding it here and using it — there is no bulk-import bucket.
@@ -67,10 +67,11 @@ flutter:
     - flutter_scene_generated/
 
     # --- 3D ---------------------------------------------------------------
-    - assets/models/karts/          # 3 kart bodies + 3 wheel sets (Kenney Car Kit)
-    - assets/models/characters/     # 3 rigged racers + 2 accessories
-    - assets/models/tracks/         # the one modular road piece the circuit tiles
-    - assets/models/environment/    # barrier + the 8 trackside props
+    # Deliberately NOT listed: assets/models/. The .glb sources there are
+    # compiled by the build hook into flutter_scene_generated/ (listed above),
+    # and `loadScene` reads only those compiled scenes at runtime. Listing the
+    # source folders as well shipped every model twice — about 3.5 MB.
+    # The hook finds the .glb files on disk under assets/, not through here.
 
     # --- UI ---------------------------------------------------------------
     - assets/images/splash/              # company / studio splash screens

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:dashkart/core/audio/audio_manager.dart';
+import 'package:dashkart/core/scaffold/dash_ui_scale.dart';
 import 'package:dashkart/data/player.dart';
 import 'package:dashkart/core/theme/theme.dart';
 import 'package:dashkart/firebase_options.dart';
@@ -75,13 +76,44 @@ Future<void> main() async {
   runApp(ProviderScope(child: DashKartApp(firebaseReady: firebaseReady)));
 }
 
-class DashKartApp extends StatelessWidget {
+class DashKartApp extends StatefulWidget {
   const DashKartApp({super.key, required this.firebaseReady, this.home});
 
   final bool firebaseReady;
 
   /// Replaces the normal game flow — used for the phone controller page.
   final Widget? home;
+
+  @override
+  State<DashKartApp> createState() => _DashKartAppState();
+}
+
+class _DashKartAppState extends State<DashKartApp> {
+  /// Silences the game while it is in the background, from the app root
+  /// rather than from any one screen — the menu has music too, and audio is
+  /// an app-wide resource. Without this, backgrounding DashKart left its
+  /// music and engine loop playing over whatever the player switched to.
+  ///
+  /// `RaceScreen` keeps its own listener for the orthogonal concern of
+  /// pausing the race itself.
+  AppLifecycleListener? _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(
+      onHide: () => AudioManager.instance.setSuspended(true),
+      onPause: () => AudioManager.instance.setSuspended(true),
+      onShow: () => AudioManager.instance.setSuspended(false),
+      onRestart: () => AudioManager.instance.setSuspended(false),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,11 +133,15 @@ class DashKartApp extends StatelessWidget {
             transitionsBuilder: (context, anim, _, child) =>
                 FadeTransition(opacity: anim, child: child),
           ),
-      builder: (context, child) => DashMotionScope(
-        enabled: !MediaQuery.disableAnimationsOf(context),
-        child: child!,
+      // Above WidgetsApp's own Navigator, so every *pushed* route — kart
+      // select, the race, settings — is scaled too, not just the home route.
+      builder: (context, child) => DashUiScale(
+        child: DashMotionScope(
+          enabled: !MediaQuery.disableAnimationsOf(context),
+          child: child!,
+        ),
       ),
-      home: home ?? _AppFlow(firebaseReady: firebaseReady),
+      home: widget.home ?? _AppFlow(firebaseReady: widget.firebaseReady),
     );
   }
 }
@@ -160,47 +196,54 @@ class _AppFlowState extends ConsumerState<_AppFlow> {
   }
 }
 
-class _MenuHost extends StatelessWidget {
+class _MenuHost extends StatefulWidget {
   const _MenuHost({required this.firebaseReady});
 
   final bool firebaseReady;
 
+  @override
+  State<_MenuHost> createState() => _MenuHostState();
+}
+
+class _MenuHostState extends State<_MenuHost> {
+  /// Brings the menu music back when a pushed screen is popped.
+  ///
+  /// The menu is the home route, so its `initState` runs exactly once per
+  /// launch — which meant that after the first race stopped the music, the
+  /// menu stayed silent for the rest of the session.
   void _push(BuildContext context, Widget page) {
-    Navigator.of(context).push(DashPageRoute<void>(page: page));
+    Navigator.of(context).push(DashPageRoute<void>(page: page)).then((_) {
+      if (mounted) AudioManager.instance.playMenuMusic();
+    });
   }
 
   /// RACE runs the whole pre-race flow in order — kart, then track, then who
-  /// you're racing. Each step replaces the last rather than stacking, so
-  /// Back always means "one step back in the flow" and the stack never grows
-  /// past a single screen.
+  /// you're racing. Each step pushes on top of the last, so Back always means
+  /// "one step back in the flow".
   void _startRaceFlow(BuildContext context) {
     _push(
       context,
       KartSelectScreen(
-        onConfirm: () {
-          _push(
-            context,
-            TrackSelectScreen(
-              onConfirm: () {
-                _push(
+        onConfirm: () => _push(
+          context,
+          TrackSelectScreen(
+            onBack: () => Navigator.of(context).maybePop(),
+            onConfirm: () => _push(
+              context,
+              RaceModeScreen(
+                onBack: () => Navigator.of(context).maybePop(),
+                onBots: () => _push(
                   context,
-                  RaceModeScreen(
-                    onBots: () {
-                      _push(
-                        context,
-                        RaceScreen(
-                          onExit: () =>
-                              Navigator.of(context).popUntil((r) => r.isFirst),
-                        ),
-                      );
-                    },
-                    onMultiplayer: () => _startMultiplayerFlow(context),
+                  RaceScreen(
+                    onExit: () =>
+                        Navigator.of(context).popUntil((r) => r.isFirst),
                   ),
-                );
-              },
+                ),
+                onMultiplayer: () => _startMultiplayerFlow(context),
+              ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -212,7 +255,7 @@ class _MenuHost extends StatelessWidget {
   /// already on [PlayerState] by this point, which is what both the lobby
   /// and the race itself read.
   void _startMultiplayerFlow(BuildContext context) {
-    if (!firebaseReady) {
+    if (!widget.firebaseReady) {
       DashDialog.show(
         context,
         dialog: const DashDialog(

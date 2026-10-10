@@ -1,30 +1,32 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 import 'package:dashkart/core/audio/audio_manager.dart';
+import 'package:dashkart/core/feedback/haptics.dart';
 import 'package:dashkart/data/catalog.dart';
+import 'package:dashkart/data/kart_tuning.dart';
 import 'package:dashkart/data/models.dart';
 import 'package:dashkart/data/player.dart';
-import 'package:dashkart/features/race/scene/race_simulation.dart';
 import 'package:dashkart/features/multiplayer/multiplayer_service.dart';
-import 'package:dashkart/core/widgets/components.dart';
+import 'package:dashkart/features/race/race_telemetry.dart';
+import 'package:dashkart/features/race/scene/race_simulation.dart';
 import 'package:dashkart/features/results/results_screen.dart';
 
 enum RacePhase { countdown, racing, paused, results }
 
-/// Everything about *running* a race: item-box timing, multiplayer
-/// telemetry, and the audio side effects those trigger, plus the player's
-/// steer/brake input state that `RaceScene` reads to drive a real physics
-/// body each frame.
+/// Everything about *running* a race: the AI field's clock, item and drift
+/// timing, multiplayer telemetry, the audio side effects those trigger, and
+/// the player's steer/brake/drift input state that `RaceScene` reads to drive
+/// a real physics body each frame.
 ///
-/// The simulation tick itself is split across two owners now: [tick] (this
-/// class, driven by [RaceScreen]'s [Ticker]) still advances bots, timers,
-/// and items, but the player's own movement and kart-vs-kart/kart-vs-wall
-/// collisions are resolved by `RaceScene`'s Rapier physics world, which
-/// reports back in via [reportPlayerTelemetry] and [onPlayerCollision].
+/// The simulation tick is split across two owners: [tick] (this class, driven
+/// by [RaceScreen]'s [Ticker]) advances bots, timers and items, while the
+/// player's own movement and collisions are resolved by `RaceScene`'s Rapier
+/// physics world, which reports back in via [reportTelemetry] and
+/// [onPlayerCollision]. Where 3D is unavailable the split collapses: [tick]
+/// drives the player too, through
+/// [RaceSimulation.advancePlayerKinematically], so the race is still a race.
 ///
 /// [RaceScreen] owns only the [Ticker] (that needs a `vsync`, which is
 /// inherently a widget concern) and forwards frames to [tick]; everything
@@ -44,7 +46,8 @@ class RaceController extends ChangeNotifier {
 
   bool get isMultiplayer => multiplayer != null;
 
-  static const _botCount = 3;
+  /// Rivals in a solo race: with the player, a field of three.
+  static const _botCount = 2;
 
   /// Seconds since the opponent's telemetry was last pushed to the network —
   /// pushed at ~10Hz rather than every frame, since a room only needs to be
@@ -66,20 +69,27 @@ class RaceController extends ChangeNotifier {
   double _steer = 0;
   double get steer => _steer;
 
-  /// The player's signed offset from the track spline, in world units, as
-  /// last reported by `RaceScene`'s physics projection — kept only to sync
-  /// over the network in multiplayer; nothing local reads it any more since
-  /// the player's actual position now lives in the physics world, not here.
-  double _lateral = 0;
+  /// Live telemetry from `RaceScene`'s physics body — drift charge, wrong-way
+  /// state and the rest, forwarded to the HUD as-is.
+  RaceTelemetry _telemetry = RaceTelemetry.zero;
+  RaceTelemetry get telemetry => _telemetry;
+
+  /// True once the 3D scene has reported it cannot build, at which point
+  /// [tick] takes over driving the player itself. Until then the controller
+  /// deliberately does *not* move the kart, because the physics world is
+  /// about to.
+  bool _kinematicFallback = false;
 
   ItemSlotState _itemState = ItemSlotState.empty;
   ItemSlotState get itemState => _itemState;
-  RaceItem? _item;
-  RaceItem? get item => _item;
-  double _nextItemAt = 0.35;
 
   RaceResult? _result;
   RaceResult? get result => _result;
+
+  /// The last overtake or place lost, for the HUD's callout. Cleared once it
+  /// has been on screen long enough to read.
+  String? _flash;
+  String? get flash => _flash;
 
   /// Bumped on every restart so a stray delayed item-pickup callback from the
   /// race being restarted over can't clobber the new run's state. Also used
@@ -92,42 +102,47 @@ class RaceController extends ChangeNotifier {
   int _gen = 0;
 
   double _mpWriteAccum = 0;
-
-  /// Guards the delayed item-pickup callback below against firing — and
-  /// calling [notifyListeners] — after [RaceScreen] has disposed this
-  /// controller, the same way the old code checked `State.mounted`.
-  bool _disposed = false;
+  double _flashRemaining = 0;
 
   RaceSimulation _newSim() {
     final mp = multiplayer;
     if (mp != null) {
       // Exactly one rival — the human opponent — and no AI filler.
-      return RaceSimulation(
+      final sim = RaceSimulation(
         track: Catalog.trackById(mp.trackId),
         playerKart: player.kart,
+        playerName: player.name,
         rivals: [Catalog.kartById(mp.opponent.kartId)],
+        rivalNames: [mp.opponent.name],
+        networkOpponents: true,
       );
+      // Start the opponent in the lane opposite ours, where their kart will
+      // actually be, rather than on top of us until their first update lands.
+      final opponent = sim.runs[1];
+      opponent.progress = 0;
+      opponent.lateralLane = RaceSimulation.multiplayerStartLane(
+        isHost: mp.role != MultiplayerRole.host,
+      );
+      return sim;
     }
+    // The field is drawn from the karts the player has *not* selected, so a
+    // race is against different machinery rather than three copies of the
+    // player's own kart. With a roster this size there are always enough;
+    // the modulo is what keeps it correct if the roster ever shrinks.
+    final field = Catalog.karts.where((k) => k.id != player.kart.id).toList();
+    final roster = field.isEmpty ? Catalog.karts : field;
     return RaceSimulation(
       track: player.track,
       playerKart: player.kart,
-      // Cycles through the roster rather than filtering out the player's own
-      // kart: with Catalog.karts currently down to one entry, excluding it
-      // would leave zero bots. RaceSimulation already varies each bot's pace
-      // with jitter, so sharing a kart with the field reads as fine as it
-      // does in any kart racer with a small roster.
-      rivals: List.generate(
-        _botCount,
-        (i) => Catalog.karts[i % Catalog.karts.length],
-      ),
+      playerName: player.name,
+      rivals: List.generate(_botCount, (i) => roster[i % roster.length]),
     );
   }
 
   /// Re-derives [sim] from the player's current kart/track — only while
   /// still on the countdown, before anything has actually raced, since
-  /// [RaceScreen] re-reads [player] (an `InheritedNotifier`) on every
-  /// dependency change and a race already under way must never be reset out
-  /// from under the driver.
+  /// [RaceScreen] re-reads [player] on every dependency change and a race
+  /// already under way must never be reset out from under the driver.
   void refreshSimIfIdle() {
     if (_phase != RacePhase.countdown) return;
     _sim = _newSim();
@@ -138,7 +153,18 @@ class RaceController extends ChangeNotifier {
   void setBraking(bool value) => _braking = value;
 
   void setDrifting(bool value) {
+    if (_drifting == value) return;
     _drifting = value;
+    notifyListeners();
+  }
+
+  /// Switches to driving the player here instead of waiting on physics
+  /// telemetry that is never going to arrive. Called by [RaceScreen] when
+  /// `RaceScene` reports it could not build — no Flutter GPU, or a scene
+  /// that failed to load.
+  void useKinematicFallback() {
+    if (_kinematicFallback) return;
+    _kinematicFallback = true;
     notifyListeners();
   }
 
@@ -157,22 +183,33 @@ class RaceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Integrates one frame of everything *except* the player's own movement:
-  /// bots, the boost timer, elapsed time, items, and (in multiplayer) the
-  /// throttled network push. Returns true once the race has finished, so
-  /// [RaceScreen] knows to stop its [Ticker]. The player's real movement and
-  /// collisions happen in `RaceScene`'s own physics tick, reported back via
-  /// [reportPlayerTelemetry] and [onPlayerCollision] — which can also finish
-  /// the race on its own, since physics ticks may land between two calls
-  /// here.
+  /// Integrates one frame. Returns true once the race has finished, so
+  /// [RaceScreen] knows to stop its [Ticker].
   bool tick(Duration now) {
     final dt = _last == Duration.zero
         ? 0.0
         : (now - _last).inMicroseconds / 1e6;
     _last = now;
+    // A frame this long means the app was suspended or the device stalled.
+    // Integrating it would teleport the whole field; dropping it costs one
+    // frame of motion.
     if (dt <= 0 || dt > 0.25) return false;
 
     _sim.advance(dt);
+
+    // Without a physics world there is nothing else to move the player, so
+    // this is where they are driven from.
+    if (_kinematicFallback) {
+      _sim.advancePlayerKinematically(dt, steer: _steer, braking: _braking);
+      _telemetry = RaceTelemetry(
+        progress: _sim.player.progress,
+        lateral: _sim.player.lateralLane,
+        speedKmh: _sim.speedKmh,
+        driftCharge: 0,
+        drifting: false,
+        wrongWay: false,
+      );
+    }
 
     final mp = multiplayer;
     if (mp != null) {
@@ -182,14 +219,19 @@ class RaceController extends ChangeNotifier {
       final opponent = _sim.runs[1];
       opponent.progress = mp.opponent.progress;
       opponent.lateralLane = mp.opponent.lateral;
+      // Their device says when they have crossed the line. If that leaves
+      // nobody still racing, the race is over for us too.
+      if (mp.opponent.finished) _sim.markFinished(opponent);
 
       _mpWriteAccum += dt;
       if (_mpWriteAccum >= _mpWriteInterval) {
-        _mpWriteAccum = 0;
+        // Subtracted rather than zeroed, so the push rate does not drift
+        // with the frame time.
+        _mpWriteAccum -= _mpWriteInterval;
         unawaited(
           mp.updateTelemetry(
             progress: _sim.player.progress,
-            lateral: _lateral,
+            lateral: _telemetry.lateral,
             finished: false,
           ),
         );
@@ -198,22 +240,10 @@ class RaceController extends ChangeNotifier {
 
     AudioManager.instance.updateEnginePitch(
       _sim.speedKmh / _sim.topSpeed,
-      boosting: _sim.boosting || _drifting,
+      boosting: _sim.boosting,
     );
 
-    // Item boxes are picked up at fixed points around the lap.
-    if (_itemState == ItemSlotState.empty &&
-        _sim.player.progress % 1 >= _nextItemAt) {
-      _itemState = ItemSlotState.rolling;
-      AudioManager.instance.playItemPickup();
-      final gen = _gen;
-      Future<void>.delayed(const Duration(milliseconds: 900), () {
-        if (_disposed || gen != _gen) return;
-        _item = RaceItem.values[math.Random().nextInt(RaceItem.values.length)];
-        _itemState = ItemSlotState.ready;
-        notifyListeners();
-      });
-    }
+    _updateFlash(dt);
 
     if (_sim.finished) {
       _finish();
@@ -223,47 +253,80 @@ class RaceController extends ChangeNotifier {
     return false;
   }
 
-  /// Feeds in this physics tick's telemetry from `RaceScene` — the player's
-  /// spline-projected lap progress, lateral offset (kept only for the
-  /// multiplayer network push above), and speed — and refreshes listeners
-  /// immediately rather than waiting for the next outer [tick]. Runs on
-  /// `RaceScene`'s own physics clock, not this class's [Ticker]-driven one,
-  /// so it can also notice the finish line first; [_finish] is guarded
-  /// against running twice for exactly that reason.
-  void reportPlayerTelemetry({
-    required double progress,
-    required double lateral,
-    required double speedKmh,
-  }) {
+  /// Expires the transient callout once it has been up long enough to read.
+  /// (Only the mini-turbo shows one now; overtakes and lost places are not
+  /// announced.)
+  void _updateFlash(double dt) {
+    if (_flashRemaining <= 0) return;
+    _flashRemaining -= dt;
+    if (_flashRemaining <= 0) _flash = null;
+  }
+
+  /// Feeds in this physics tick's telemetry from `RaceScene`. Runs on
+  /// `RaceScene`'s own physics clock, so it can notice the finish line first;
+  /// [_finish] is guarded against running twice for exactly that reason.
+  void reportTelemetry(RaceTelemetry telemetry) {
     if (_phase != RacePhase.racing) return;
-    _lateral = lateral;
-    _sim.applyPlayerTelemetry(progress: progress, speedKmh: speedKmh);
+    _telemetry = telemetry;
+    _sim.applyPlayerTelemetry(
+      progress: telemetry.progress,
+      speedKmh: telemetry.speedKmh,
+    );
     if (_sim.finished) {
       _finish();
       return;
     }
-    notifyListeners();
+    // No notifyListeners here: [tick] runs every frame the race is live and
+    // notifies once itself. Notifying from the physics callback as well
+    // rebuilt the whole race screen twice a frame for no fresher picture.
   }
 
   /// The player's kart just registered a new contact — with a rival or a
   /// track barrier — reported by `RaceScene`'s Rapier collision listener,
-  /// which only fires once per contact begin (no manual debouncing needed
-  /// the way the old lane-based check required). The speed/velocity change
-  /// itself is real physics now, not a scripted scrub; this only drives the
-  /// feedback a player can feel.
+  /// which only fires once per contact begin. The speed change itself is real
+  /// physics, not a scripted scrub; this only drives the feedback a player
+  /// can feel.
   void onPlayerCollision() {
     if (_phase != RacePhase.racing) return;
-    HapticFeedback.mediumImpact();
+    Haptics.medium();
+    AudioManager.instance.playImpact();
+  }
+
+  /// A drift held to full charge and released. The one boost in the game the
+  /// player earns through driving rather than finds on the road, which is why
+  /// it is shorter than a collected turbo.
+  void onDriftBoost() {
+    if (_phase != RacePhase.racing) return;
+    _sim.useBoost(duration: KartTuning.miniTurboDuration);
+    AudioManager.instance.playDriftBoost();
+    Haptics.light();
+    _flash = 'MINI TURBO';
+    _flashRemaining = 1.0;
+    notifyListeners();
   }
 
   void _finish() {
     // Guards against double-invocation: RaceScene's physics tick and this
     // class's own Ticker-driven tick() can each notice the finish line
-    // independently (see reportPlayerTelemetry's doc comment).
+    // independently (see reportTelemetry's doc comment).
     if (_phase != RacePhase.racing) return;
     AudioManager.instance.stopEngineLoop();
     AudioManager.instance.stopMusic();
-    AudioManager.instance.playVictoryFanfare();
+
+    final position = _sim.position;
+    final best = _sim.bestLap ?? _sim.elapsed;
+
+    // The race can end around the player: once every other racer has
+    // finished it is over, whether or not they have. They are then placed
+    // behind everyone who did finish, by how far they got.
+    final playerFinished = _sim.player.finishTime != null;
+    final lapsDone = _sim.player.progress.floor().clamp(0, _sim.track.laps);
+
+    if (position == 1) {
+      AudioManager.instance.playVictoryFanfare();
+    } else {
+      AudioManager.instance.playRaceOver();
+    }
 
     // Best-effort: let the opponent's device see the finish immediately
     // rather than waiting up to _mpWriteInterval for the next throttled push.
@@ -272,22 +335,25 @@ class RaceController extends ChangeNotifier {
       unawaited(
         mp.updateTelemetry(
           progress: _sim.player.progress,
-          lateral: _lateral,
-          finished: true,
+          lateral: _telemetry.lateral,
+          finished: playerFinished,
         ),
       );
     }
 
-    final position = _sim.position;
-    final best = _sim.bestLap ?? _sim.elapsed;
     // _sim.track, not player.track: in multiplayer the race runs on the
     // host's track, which the guest's own selection need not match.
-    final previous = player.bestTime(_sim.track.id);
-
-    player.recordResult(
+    final reward = player.recordResult(
       trackId: _sim.track.id,
       time: _sim.elapsed,
       position: position,
+      // Laps actually completed, so a race that ended early pays only for
+      // the distance driven.
+      laps: lapsDone,
+      completed: playerFinished,
+      // A 1v1 against a friend is not the single-player ladder; paying
+      // trophies for it would make the unlock schedule trivially farmable.
+      ranked: !isMultiplayer,
     );
 
     _phase = RacePhase.results;
@@ -296,8 +362,22 @@ class RaceController extends ChangeNotifier {
       totalRacers: _sim.runs.length,
       time: _sim.elapsed,
       bestLap: best,
-      xp: 60 + (9 - position) * 15,
-      newRecord: previous == null || _sim.elapsed < previous,
+      trophies: reward.trophies,
+      xp: reward.xp,
+      level: reward.level,
+      levelledUp: reward.levelledUp,
+      unlocked: reward.unlocked,
+      newRecord: reward.newRecord,
+      trackName: _sim.track.name,
+      didFinish: playerFinished,
+      standings: [
+        for (final run in _sim.order)
+          RaceStanding(
+            name: run.name,
+            isPlayer: run.isPlayer,
+            laps: run.progress.clamp(0, _sim.track.laps.toDouble()),
+          ),
+      ],
     );
     notifyListeners();
   }
@@ -305,7 +385,13 @@ class RaceController extends ChangeNotifier {
   void pause() {
     if (_phase != RacePhase.racing) return;
     AudioManager.instance.stopEngineLoop();
+    AudioManager.instance.duckMusic(true);
     AudioManager.instance.playUiTap();
+    // A paused race must not keep the throttle held: resuming with a button
+    // the player long since let go of is the classic pause-menu bug.
+    _braking = false;
+    _drifting = false;
+    _steer = 0;
     _phase = RacePhase.paused;
     notifyListeners();
   }
@@ -313,26 +399,34 @@ class RaceController extends ChangeNotifier {
   void resume() {
     if (_phase != RacePhase.paused) return;
     AudioManager.instance.playUiConfirm();
+    AudioManager.instance.duckMusic(false);
     AudioManager.instance.startEngineLoop();
     _last = Duration.zero;
     _phase = RacePhase.racing;
     notifyListeners();
   }
 
-  void restart() {
+  /// Restarts on the same circuit. [track] re-targets it, which is what the
+  /// results screen's NEXT RACE uses to roll straight into the next circuit
+  /// without a trip back through the menus.
+  void restart({Track? track}) {
     AudioManager.instance.playUiConfirm();
     AudioManager.instance.stopEngineLoop();
     AudioManager.instance.stopMusic();
+    AudioManager.instance.duckMusic(false);
+    if (track != null) player.selectTrack(track);
     _gen++;
     _sim = _newSim();
     _braking = false;
     _drifting = false;
     _steer = 0;
-    _lateral = 0;
+    _telemetry = RaceTelemetry.zero;
     _itemState = ItemSlotState.empty;
-    _item = null;
-    _nextItemAt = 0.35;
+    _result = null;
+    _flash = null;
+    _flashRemaining = 0;
     _last = Duration.zero;
+    _mpWriteAccum = 0;
     _phase = RacePhase.countdown;
     notifyListeners();
   }
@@ -340,34 +434,42 @@ class RaceController extends ChangeNotifier {
   void quit() {
     AudioManager.instance.stopEngineLoop();
     AudioManager.instance.stopMusic();
+    AudioManager.instance.duckMusic(false);
     AudioManager.instance.playUiBack();
   }
 
-  void useItem() {
-    if (_itemState != ItemSlotState.ready) return;
-    if (_item == RaceItem.turboCell || _item == RaceItem.warpDash) {
-      _sim.useBoost();
-      AudioManager.instance.playBoostSfx();
-    } else {
-      AudioManager.instance.playItemUse();
-    }
-    HapticFeedback.mediumImpact();
-    _itemState = ItemSlotState.empty;
-    _item = null;
-    _nextItemAt = 0.2 + math.Random().nextDouble() * 0.6;
+  /// The player's kart drove through a turbo pickup on the track. Holds one
+  /// turbo at a time — a second orb while one is already stored is ignored.
+  void collectTurbo() {
+    if (_phase != RacePhase.racing || _itemState != ItemSlotState.empty) return;
+    _itemState = ItemSlotState.ready;
+    AudioManager.instance.playItemPickup();
+    Haptics.light();
     notifyListeners();
   }
+
+  void useItem() {
+    if (_phase != RacePhase.racing || _itemState != ItemSlotState.ready) return;
+    _sim.useBoost();
+    AudioManager.instance.playBoostSfx();
+    Haptics.medium();
+    _itemState = ItemSlotState.empty;
+    notifyListeners();
+  }
+
+  /// Fraction of the way to a mini-turbo, 0..1 — the HUD's drift meter.
+  double get driftCharge => _telemetry.driftCharge;
 
   @override
   void dispose() {
     AudioManager.instance.stopEngineLoop();
     AudioManager.instance.stopMusic();
+    AudioManager.instance.duckMusic(false);
     // Whichever way the race is left — pause-menu Quit, or any of the
     // results screen's buttons — the session's lifetime ends here, exactly
     // once, since [RaceScreen] disposes this controller on every exit path.
     multiplayer?.leave();
     multiplayer?.dispose();
-    _disposed = true;
     super.dispose();
   }
 }

@@ -149,9 +149,8 @@ class DashRaceButton extends StatelessWidget {
                                   right: 0,
                                   height: 2.5,
                                   child: Container(
-                                    color: const Color(
-                                      0xFFFFF25C,
-                                    ).withValues(alpha: 0.9),
+                                    color: const Color(0xFFFFF25C)
+                                        .withValues(alpha: 0.9),
                                   ),
                                 ),
 

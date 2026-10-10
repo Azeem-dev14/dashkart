@@ -92,9 +92,8 @@ class DashBrawlProfileBadge extends StatelessWidget {
                                   right: 0,
                                   height: 2.2,
                                   child: Container(
-                                    color: const Color(
-                                      0xFFFFF25C,
-                                    ).withValues(alpha: 0.9),
+                                    color: const Color(0xFFFFF25C)
+                                        .withValues(alpha: 0.9),
                                   ),
                                 ),
                                 // Avatar Icon centered
@@ -165,9 +164,8 @@ class DashBrawlProfileBadge extends StatelessWidget {
                                     right: 0,
                                     height: 1.8,
                                     child: Container(
-                                      color: const Color(
-                                        0xFF8697BD,
-                                      ).withValues(alpha: 0.80),
+                                      color: const Color(0xFF8697BD)
+                                          .withValues(alpha: 0.80),
                                     ),
                                   ),
                                   // Right edge subtle specular sheen

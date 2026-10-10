@@ -2,28 +2,79 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+import 'package:dashkart/features/race/scene/kart_viewer.dart';
+
 import 'package:dashkart/core/theme/theme.dart';
 import 'package:dashkart/core/widgets/components.dart';
 
+/// One racer's final standing, for the board on the results screen.
+class RaceStanding {
+  const RaceStanding({
+    required this.name,
+    required this.isPlayer,
+    required this.laps,
+  });
+
+  final String name;
+  final bool isPlayer;
+
+  /// Laps completed, fractional — so a racer still mid-lap when the winner
+  /// crossed is shown where they actually got to.
+  final double laps;
+}
+
 /// A finished race, ready to be shown.
+///
+/// The reward fields are what [PlayerState.recordResult] actually banked, not
+/// a second formula. The screen used to compute its own XP figure from an
+/// eight-racer field while progression advanced by an unrelated flat amount,
+/// so the number the player was shown was never the number they were paid.
 class RaceResult {
   const RaceResult({
     required this.position,
     required this.totalRacers,
     required this.time,
     required this.bestLap,
+    required this.trophies,
     required this.xp,
+    required this.level,
+    required this.levelledUp,
     required this.newRecord,
+    required this.trackName,
+    this.didFinish = true,
+    this.unlocked = const [],
+    this.standings = const [],
   });
 
   final int position;
   final int totalRacers;
   final Duration time;
   final Duration bestLap;
-  final int xp;
-  final bool newRecord;
 
-  bool get won => position == 1;
+  /// Trophies banked. Zero off the podium, and zero in multiplayer, which is
+  /// not the single-player ladder.
+  final int trophies;
+  final int xp;
+  final int level;
+  final bool levelledUp;
+  final bool newRecord;
+  final String trackName;
+
+  /// False when the race ended before the player crossed the line — everyone
+  /// else had already finished. There is no race time to show for that.
+  final bool didFinish;
+
+  /// Content this result put within reach.
+  final List<String> unlocked;
+
+  /// Final order, best first.
+  final List<RaceStanding> standings;
+
+  /// A podium finish — what the celebration treatment keys off, rather than
+  /// a win alone. Beating at least one other racer counts; coming last does
+  /// not, which matters in a field of three, where "top three" would be
+  /// everyone.
+  bool get podium => position <= 3 && position < totalRacers;
 }
 
 /// The results screen.
@@ -35,15 +86,35 @@ class ResultsScreen extends StatefulWidget {
   const ResultsScreen({
     super.key,
     required this.result,
-    required this.onNext,
     required this.onReplay,
     required this.onHome,
+    this.onNext,
+    this.nextLabel,
+    this.kartModelPath,
+    this.kartTint,
   });
 
   final RaceResult result;
-  final VoidCallback onNext;
+
+  /// Restarts the race just finished.
   final VoidCallback onReplay;
+
+  /// Leaves to the main menu.
   final VoidCallback onHome;
+
+  /// Rolls straight into the next circuit. Null when there is no next one to
+  /// go to — a live multiplayer race, or every other circuit still locked —
+  /// in which case the button is not offered rather than offered and inert.
+  final VoidCallback? onNext;
+
+  /// The circuit [onNext] leads to, named on the button so the player knows
+  /// where they are about to go.
+  final String? nextLabel;
+
+  /// The player's kart, shown on the podium. Null falls back to a drawn
+  /// figure.
+  final String? kartModelPath;
+  final Color? kartTint;
 
   @override
   State<ResultsScreen> createState() => _ResultsScreenState();
@@ -103,7 +174,8 @@ class _ResultsScreenState extends State<ResultsScreen>
             return Stack(
               fit: StackFit.expand,
               children: [
-                if (r.won && !reduced) DashConfetti(progress: _beat(800, 2800)),
+                if (r.podium && !reduced)
+                  DashConfetti(progress: _beat(800, 2800)),
                 SafeArea(
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: bp.gutter),
@@ -123,7 +195,17 @@ class _ResultsScreenState extends State<ResultsScreen>
                             ),
                           ),
                         ),
-                        const SizedBox(height: DashSpace.x4),
+                        if (r.unlocked.isNotEmpty)
+                          Opacity(
+                            opacity: stats,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: DashSpace.x2),
+                              child: Center(
+                                child: _UnlockBanner(names: r.unlocked),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: DashSpace.x3),
                         Expanded(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -137,6 +219,8 @@ class _ResultsScreenState extends State<ResultsScreen>
                                     child: _Podium(
                                       position: r.position,
                                       colors: _placeColors,
+                                      kartModelPath: widget.kartModelPath,
+                                      kartTint: widget.kartTint,
                                     ),
                                   ),
                                 ),
@@ -146,7 +230,37 @@ class _ResultsScreenState extends State<ResultsScreen>
                                 flex: 6,
                                 child: DashCard(
                                   variant: DashCardVariant.raised,
-                                  child: _StatSheet(result: r, progress: stats),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        flex: 5,
+                                        child: _StatSheet(
+                                          result: r,
+                                          progress: stats,
+                                        ),
+                                      ),
+                                      // Three rivals and no final order
+                                      // leaves out the one thing that says
+                                      // how close the race was — but a
+                                      // 640dp screen has no width for both,
+                                      // so the stats win there.
+                                      if (r.standings.isNotEmpty &&
+                                          !bp.isCompact) ...[
+                                        const SizedBox(width: DashSpace.x3),
+                                        const _Divider(),
+                                        const SizedBox(width: DashSpace.x3),
+                                        Expanded(
+                                          flex: 4,
+                                          child: _Standings(
+                                            standings: r.standings,
+                                            progress: stats,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -164,33 +278,33 @@ class _ResultsScreenState extends State<ResultsScreen>
                               spacing: DashSpace.x3,
                               runSpacing: DashSpace.x2,
                               children: [
-                                DashButton(
-                                  label: 'Home',
-                                  icon: bp.isCompact ? null : DashIcons.back,
-                                  variant: DashButtonVariant.ghost,
-                                  size: bp.isCompact
-                                      ? DashButtonSize.sm
-                                      : DashButtonSize.md,
+                                BrawlActionButton(
+                                  label: 'HOME',
+                                  tone: BrawlButtonTone.blue,
+                                  width: bp.isCompact ? 96 : 124,
+                                  height: bp.isCompact ? 44 : 50,
+                                  fontSize: bp.isCompact ? 16 : 19,
                                   onPressed: widget.onHome,
                                 ),
-                                DashButton(
-                                  label: 'Replay',
-                                  icon: bp.isCompact ? null : DashIcons.restart,
-                                  size: bp.isCompact
-                                      ? DashButtonSize.sm
-                                      : DashButtonSize.md,
+                                BrawlActionButton(
+                                  label: 'REPLAY',
+                                  tone: BrawlButtonTone.yellow,
+                                  width: bp.isCompact ? 104 : 136,
+                                  height: bp.isCompact ? 44 : 50,
+                                  fontSize: bp.isCompact ? 16 : 19,
                                   onPressed: widget.onReplay,
                                 ),
-                                DashButton(
-                                  label: 'Next Race',
-                                  icon: bp.isCompact ? null : DashIcons.play,
-                                  variant: DashButtonVariant.turbo,
-                                  size: bp.isCompact
-                                      ? DashButtonSize.sm
-                                      : DashButtonSize.md,
-                                  glow: true,
-                                  onPressed: widget.onNext,
-                                ),
+                                if (widget.onNext != null)
+                                  BrawlActionButton(
+                                    label: widget.nextLabel == null
+                                        ? 'NEXT RACE'
+                                        : 'NEXT: ${widget.nextLabel}',
+                                    tone: BrawlButtonTone.green,
+                                    width: bp.isCompact ? 150 : 196,
+                                    height: bp.isCompact ? 44 : 50,
+                                    fontSize: bp.isCompact ? 15 : 18,
+                                    onPressed: widget.onNext,
+                                  ),
                               ],
                             ),
                           ),
@@ -261,10 +375,33 @@ class _PlaceTitle extends StatelessWidget {
 }
 
 class _Podium extends StatelessWidget {
-  const _Podium({required this.position, required this.colors});
+  const _Podium({
+    required this.position,
+    required this.colors,
+    this.kartModelPath,
+    this.kartTint,
+  });
 
   final int position;
   final List<Color> colors;
+  final String? kartModelPath;
+  final Color? kartTint;
+
+  Widget _figure() {
+    final drawn = CustomPaint(
+      size: const Size(120, 120),
+      painter: _CelebratePainter(accent: colors.first),
+    );
+    final model = kartModelPath;
+    if (model == null) return drawn;
+    return KartViewer(
+      modelPath: model,
+      tint: kartTint,
+      cameraTargetY: 0.6,
+      cameraEyeY: 1.8,
+      fallback: drawn,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -280,14 +417,7 @@ class _Podium extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Expanded(
-            child: Center(
-              child: CustomPaint(
-                size: const Size(120, 120),
-                painter: _CelebratePainter(accent: colors.first),
-              ),
-            ),
-          ),
+          Expanded(child: Center(child: _figure())),
           Text(label, style: DashType.h2),
           const SizedBox(height: DashSpace.x2),
           Container(
@@ -303,8 +433,7 @@ class _Podium extends StatelessWidget {
   }
 }
 
-/// The racer celebrating. A stand-in for the `emote-yes` clip on the rigged
-/// GLB — see docs/asset-inventory.md § 4.
+/// A drawn figure celebrating, shown only where the 3D kart cannot render.
 class _CelebratePainter extends CustomPainter {
   const _CelebratePainter({required this.accent});
 
@@ -379,32 +508,145 @@ class _StatSheet extends StatelessWidget {
 
   /// Each row appears on its own slice of [progress], and numbers count up
   /// within it.
-  double _row(int i) => ((progress - i * 0.16) / 0.5).clamp(0.0, 1.0);
+  double _row(int i) => ((progress - i * 0.14) / 0.5).clamp(0.0, 1.0);
 
   @override
   Widget build(BuildContext context) {
+    final r = result;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Row(
           label: 'Race Time',
-          value: DashTrackCard.formatTime(result.time),
+          value: r.didFinish ? DashTrackCard.formatTime(r.time) : 'DNF',
           t: _row(0),
         ),
         _Row(
           label: 'Best Lap',
-          value: DashTrackCard.formatTime(result.bestLap),
+          value: DashTrackCard.formatTime(r.bestLap),
           t: _row(1),
-          trailing: result.newRecord
+          trailing: r.newRecord
               ? const DashChip(label: 'New Record', tone: DashChipTone.success)
               : null,
         ),
+        // Only shown when it paid: a row reading "+0 TROPHIES" after a
+        // fourth-place finish rubs it in without telling the player anything.
+        if (r.trophies > 0)
+          _Row(
+            label: 'Trophies',
+            value: '+${(r.trophies * _row(2)).round()}',
+            t: _row(2),
+          ),
         _Row(
           label: 'XP',
-          value: '+${(result.xp * _row(2)).round()}',
-          t: _row(2),
+          value: '+${(r.xp * _row(3)).round()}',
+          t: _row(3),
+          trailing: r.levelledUp
+              ? DashChip(label: 'Level ${r.level}', tone: DashChipTone.brand)
+              : null,
         ),
+      ],
+    );
+  }
+}
+
+/// What this result just put within reach. Earning something and not being
+/// told is the fastest way to make a progression system feel like it is not
+/// there.
+class _UnlockBanner extends StatelessWidget {
+  const _UnlockBanner({required this.names});
+
+  final List<String> names;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: DashSpace.x3,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: DashRadius.pillAll,
+        border: Border.all(color: const Color(0xFFFFD83A), width: 2),
+        color: const Color(0x33FFD83A),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const DashRasterIcon(
+            DashRasterIcons.unlocked,
+            size: DashIconSize.sm,
+            color: Color(0xFFFFD83A),
+          ),
+          const SizedBox(width: DashSpace.x2),
+          Flexible(
+            child: BrawlInkText(
+              'UNLOCKED: ${names.join(', ').toUpperCase()}',
+              fontSize: 13,
+              weight: BrawlInkWeight.heavy,
+              color: const Color(0xFFFFD83A),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The final order. A race against three rivals that reports only the
+/// player's own place leaves out the one thing that says how close it was.
+class _Standings extends StatelessWidget {
+  const _Standings({required this.standings, required this.progress});
+
+  final List<RaceStanding> standings;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < standings.length; i++)
+          Opacity(
+            opacity: ((progress - i * 0.12) / 0.4).clamp(0.0, 1.0),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 30,
+                    child: BrawlInkText(
+                      RaceHudState.ordinal(i + 1),
+                      fontSize: 12,
+                      weight: BrawlInkWeight.heavy,
+                      color: i == 0
+                          ? const Color(0xFFFFD83A)
+                          : const Color(0xFFCBD6FF),
+                    ),
+                  ),
+                  Expanded(
+                    child: BrawlInkText(
+                      standings[i].name.toUpperCase(),
+                      fontSize: 13,
+                      weight: standings[i].isPlayer
+                          ? BrawlInkWeight.heavy
+                          : BrawlInkWeight.light,
+                      color: standings[i].isPlayer
+                          ? const Color(0xFF6BF26B)
+                          : DashColors.textPrimary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -430,10 +672,11 @@ class _Row extends StatelessWidget {
       child: Transform.translate(
         offset: Offset((1 - t) * 16, 0),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: DashSpace.x2),
+          padding: const EdgeInsets.symmetric(vertical: DashSpace.x1),
           child: Row(
             children: [
-              Flexible(
+              Expanded(
+                flex: 3,
                 child: Text(
                   label.toUpperCase(),
                   style: DashType.label,
@@ -441,17 +684,49 @@ class _Row extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: DashSpace.x2),
-              const Spacer(),
-              ?trailing,
-              if (trailing != null) const SizedBox(width: DashSpace.x2),
-              Text(value, style: DashType.timer),
+              // A badge sits between the label and the figure, so all three
+              // have to share one narrow column. Every one of them is given
+              // a bounded share and scales down inside it rather than
+              // pushing the row past its width.
+              if (trailing != null) ...[
+                Expanded(
+                  flex: 4,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: trailing,
+                  ),
+                ),
+                const SizedBox(width: DashSpace.x2),
+              ],
+              // A fixed, right-aligned value column so the figures line up
+              // whatever sits beside them.
+              SizedBox(
+                width: 84,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(value, style: DashType.timer),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// A hairline between the stat rows and the final order.
+class _Divider extends StatelessWidget {
+  const _Divider();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+    width: 2,
+    height: double.infinity,
+    child: ColoredBox(color: Color(0x332E3B72)),
+  );
 }
 
 /// Celebration confetti, reusing the sourced particle shapes as simple quads.

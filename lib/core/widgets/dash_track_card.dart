@@ -266,11 +266,9 @@ class _TrackPreview extends StatelessWidget {
 
   static const _palettes = <String, List<Color>>{
     'dash-valley': [Color(0xFF6FC7F5), Color(0xFF3E9E5C), Color(0xFF1E6B3A)],
-    'neon-circuit': [Color(0xFF1B1246), Color(0xFF5A2A9E), Color(0xFF1A0733)],
     'desert-rush': [Color(0xFFFFB661), Color(0xFFE0762C), Color(0xFF8A4118)],
     'frozen-peak': [Color(0xFFBFE4F5), Color(0xFF7FA8C9), Color(0xFF3E5B7A)],
     'sky-harbor': [Color(0xFF8ED0FF), Color(0xFFCFE9FF), Color(0xFF4B8FD1)],
-    'cyber-coast': [Color(0xFFFF9E64), Color(0xFF9B5DE5), Color(0xFF1B2A66)],
   };
 
   @override

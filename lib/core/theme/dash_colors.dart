@@ -119,13 +119,10 @@ abstract final class DashColors {
   static const racingRed = Color(0xFFFF3355);
   static const skyBlue = Color(0xFF46C8FF);
   static const cyan = Color(0xFF26D6FE);
-  static const gold = Color(0xFFFFD53F);
   static const darkNavy = Color(0xFF0B1130);
 
-  // --- Surfaces (dark) ------------------------------------------------------
+  // --- Surfaces -----------------------------------------------------------------
   static const bgBase = Color(0xFF0B1130);
-  static const bgGradientTop = Color(0xFF16205A);
-  static const bgGradientBottom = Color(0xFF080D22);
 
   static const surface = Color(0xFF151D45);
   static const surfaceRaised = Color(0xFF1E2A5C);
@@ -144,18 +141,11 @@ abstract final class DashColors {
   /// interchangeable — this one was previously ~66 separate literals.
   static const pureBlack = Color(0xFF000000);
 
-  // --- Surfaces (light) -----------------------------------------------------
-  static const bgBaseLight = Color(0xFFF4F7FF);
-  static const surfaceLight = Color(0xFFFFFFFF);
-  static const surfaceRaisedLight = Color(0xFFFFFFFF);
-  static const strokeLight = Color(0xFFD8E1F5);
-
   // --- Text -----------------------------------------------------------------
   static const textPrimary = Color(0xFFFFFFFF);
   static const textSecondary = Color(0xFFB7C3E8);
   static const textTertiary = Color(0xFF7382B8);
   static const textOnBrand = Color(0xFFFFFFFF);
-  static const textOnAccent = Color(0xFF3B2A00);
 
   // --- Brawl Stars Lobby Theme ----------------------------------------------
   static const brawlRadialInner = Color(0xFF28D9FF);
@@ -188,18 +178,6 @@ abstract final class DashGradients {
     Color(0xFF16205A),
     Color(0xFF0B1130),
     Color(0xFF080D22),
-  ];
-
-  /// Shield Orb effects.
-  static const shield = [Color(0xFF46C8FF), Color(0xFF2A6DF4)];
-
-  /// Brawl Stars Lobby Blue-to-Cyan Radiant Gradient.
-  static const brawlLobby = [
-    DashColors.brawlRadialInner,
-    DashColors.brawlRadialMid1,
-    DashColors.brawlRadialMid2,
-    DashColors.brawlRadialMid3,
-    DashColors.brawlRadialOuter,
   ];
 }
 

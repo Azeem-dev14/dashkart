@@ -98,17 +98,20 @@ class DashButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textStyle =
-        (size == DashButtonSize.sm ? DashType.buttonSm : DashType.button).copyWith(
-          fontSize: size == DashButtonSize.hero ? 24 : null,
-          color: variant == DashButtonVariant.ghost
-              ? DashColors.textPrimary
-              : DashColors.textOnBrand,
-          // A hard ink shadow under the label. Party-game lettering is never set
-          // flat on its face; it sits proud of it.
-          shadows: variant == DashButtonVariant.ghost
-              ? null
-              : const [Shadow(color: Color(0x8A1A0733), offset: Offset(0, 2))],
-        );
+        (size == DashButtonSize.sm ? DashType.buttonSm : DashType.button)
+            .copyWith(
+              fontSize: size == DashButtonSize.hero ? 24 : null,
+              color: variant == DashButtonVariant.ghost
+                  ? DashColors.textPrimary
+                  : DashColors.textOnBrand,
+              // A hard ink shadow under the label. Party-game lettering is never set
+              // flat on its face; it sits proud of it.
+              shadows: variant == DashButtonVariant.ghost
+                  ? null
+                  : const [
+                      Shadow(color: Color(0x8A1A0733), offset: Offset(0, 2)),
+                    ],
+            );
 
     return DashPressable(
       onPressed: _enabled ? onPressed : null,

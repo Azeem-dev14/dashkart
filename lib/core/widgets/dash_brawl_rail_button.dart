@@ -139,9 +139,8 @@ class DashBrawlRailButton extends StatelessWidget {
                                       right: 0,
                                       height: 1.8,
                                       child: Container(
-                                        color: const Color(
-                                          0xFF8899C2,
-                                        ).withValues(alpha: 0.8),
+                                        color: const Color(0xFF8899C2)
+                                            .withValues(alpha: 0.8),
                                       ),
                                     ),
                                     // Right edge subtle specular highlight

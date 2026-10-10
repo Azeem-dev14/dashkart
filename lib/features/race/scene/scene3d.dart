@@ -16,8 +16,6 @@ abstract final class Scene3D {
   @visibleForTesting
   static set availableOverride(bool? value) => _available = value;
 
-  static bool get isKnownUnavailable => _available == false;
-
   /// Initialises the engine's static resources, once.
   ///
   /// Returns false when 3D is unavailable, so callers render their fallback.

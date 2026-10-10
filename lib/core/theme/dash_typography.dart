@@ -29,13 +29,6 @@ abstract final class DashType {
     color: DashColors.textPrimary,
   );
 
-  static const countdown = TextStyle(
-    fontFamily: _font,
-    fontSize: 160,
-    height: 1.0,
-    color: DashColors.textPrimary,
-  );
-
   static const position = TextStyle(
     fontFamily: _font,
     fontSize: 52,

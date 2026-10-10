@@ -8,5 +8,4 @@ export 'package:dashkart/core/theme/dash_colors.dart';
 export 'package:dashkart/core/theme/dash_icons.dart';
 export 'package:dashkart/core/theme/dash_metrics.dart';
 export 'package:dashkart/core/theme/dash_motion.dart';
-export 'package:dashkart/core/theme/dash_theme.dart';
 export 'package:dashkart/core/theme/dash_typography.dart';

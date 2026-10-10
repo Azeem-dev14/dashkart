@@ -26,6 +26,7 @@ class KartViewer extends StatefulWidget {
     this.cameraTargetY,
     this.cameraEyeY,
     this.fixedAngle,
+    this.spinPeriod = const Duration(seconds: 7),
   });
 
   /// e.g. `assets/models/karts/dashkart.glb`.
@@ -46,6 +47,9 @@ class KartViewer extends StatefulWidget {
   /// Fixed horizontal camera angle in radians. When provided or when spin is false,
   /// this angle is used (e.g. pi/2 for headlights facing straight forward).
   final double? fixedAngle;
+
+  /// Time for one full turn while [spin] is on. Longer is slower.
+  final Duration spinPeriod;
 
   @override
   State<KartViewer> createState() => _KartViewerState();
@@ -153,7 +157,10 @@ class _KartViewerState extends State<KartViewer> {
         final angle =
             widget.fixedAngle ??
             (spin
-                ? elapsed.inMilliseconds / 7000 * math.pi * 2
+                ? elapsed.inMilliseconds /
+                      widget.spinPeriod.inMilliseconds *
+                      math.pi *
+                      2
                 : (math.pi / 2));
         const radius = 4.4;
         return PerspectiveCamera(

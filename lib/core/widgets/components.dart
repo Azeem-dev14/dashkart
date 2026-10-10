@@ -3,6 +3,8 @@
 /// dead code once their only screen stopped using them.
 library;
 
+export 'package:dashkart/core/widgets/brawl_action_button.dart';
+export 'package:dashkart/core/widgets/brawl_panel.dart';
 export 'package:dashkart/core/widgets/dash_brawl_app_bar.dart';
 export 'package:dashkart/core/widgets/dash_brawl_backdrop.dart';
 export 'package:dashkart/core/widgets/dash_brawl_ink_text.dart';
@@ -19,7 +21,6 @@ export 'package:dashkart/core/widgets/dash_game_hud.dart';
 export 'package:dashkart/core/widgets/dash_ground_shadow.dart';
 export 'package:dashkart/core/widgets/dash_icon.dart';
 export 'package:dashkart/core/widgets/dash_icon_button.dart';
-export 'package:dashkart/core/widgets/dash_item_slot.dart';
 export 'package:dashkart/core/widgets/dash_outlined_text.dart';
 export 'package:dashkart/core/widgets/dash_pressable.dart';
 export 'package:dashkart/core/widgets/dash_race_button.dart';

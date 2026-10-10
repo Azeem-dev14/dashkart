@@ -9,7 +9,6 @@ abstract final class DashMotion {
   static const base = Duration(milliseconds: 260);
   static const slow = Duration(milliseconds: 420);
   static const hero = Duration(milliseconds: 650);
-  static const celebrate = Duration(milliseconds: 900);
 
   static const tapCurve = Curves.easeOutQuad;
   static const releaseCurve = Cubic(0.34, 1.56, 0.64, 1); // easeOutBack ~1.4
@@ -17,7 +16,6 @@ abstract final class DashMotion {
   static const baseCurve = Curves.easeOutCubic;
   static const slowCurve = Curves.easeOutQuint;
   static const heroCurve = Cubic(0.34, 1.42, 0.64, 1); // easeOutBack ~1.2
-  static const celebrateCurve = Curves.elasticOut;
 
   /// Children of a list or grid enter this far apart, capped so a long list
   /// does not crawl in.

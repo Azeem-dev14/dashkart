@@ -4,8 +4,7 @@ An original arcade kart racer for Android and iOS. This directory is the
 production plan: what the game looks like, what it is built from, and where every
 asset came from.
 
-**Status:** plan complete, assets sourced and in place, UI implemented. The 3D
-race scene is not started — see [Implementation status](#implementation-status).
+**Status:** playable end to end — see [Implementation status](#implementation-status).
 
 ## The documents
 
@@ -25,7 +24,6 @@ race scene is not started — see [Implementation status](#implementation-status
 | | Count | Source |
 |---|---|---|
 | Kart models | 8 + 3 wheel sets | Kenney Car Kit · CC0 |
-| Rigged racers | 8, **32 animation clips each** incl. `drive` | Kenney Mini Characters · CC0 |
 | Track pieces | 102 modular | Kenney Racing Kit + Toy Car Kit · CC0 |
 | Environment props | 316 | Kenney Racing / Nature / City kits · CC0 |
 | UI frames | 228 SVG | Kenney UI Pack + Adventure · CC0 |
@@ -99,80 +97,74 @@ hook to `hook/build.dart`.
 
 ## Implementation status
 
-The plan phase is complete and implementation has started. Current state:
+The game is playable start to finish: splash → loading → name entry → menu →
+kart → circuit → mode → countdown → race → results → next race.
 
-### Built
+### How a race works
 
-| Layer | Files | State |
+| Piece | Where | Notes |
 |---|---|---|
-| **Design tokens** | `lib/design/` — colours, typography, metrics, motion, icon set | Complete |
-| **Components** | `lib/ui/components/` — all eleven from the design system, plus `DashWordmark`, `DashPressable`, `DashEnter`, `DashControls` | Complete |
-| **Domain** | `lib/data/` — models, catalogue (8 karts, 8 racers, 6 tracks), player progression | Complete |
-| **Screens** | Splash, Main Menu, Track Select, Kart Select, Character Select, Garage, Settings, Race, Results, Countdown | Complete |
-| **Race HUD** | `DashGameHUD` — position, lap, minimap, speed, item slot, driving controls | Complete |
-| **Race loop** | `RaceSimulation` — acceleration, braking, cornering scrub, boost, rival field, lap and position tracking | Complete |
-| **Race scene** | 3D via `flutter_scene` | **Not started** — a painted road stands in |
+| Kart stats → physics | `lib/data/kart_tuning.dart` | One conversion. The five card stats set top speed, acceleration, yaw rate, grip, drift behaviour, mass and braking. The scene, the bots, the HUD readout and the circuit tests all read it. |
+| Driving model | `race_scene.dart` | Velocity-driven Rapier body. Hold DRIFT through a corner at speed to slide; release on a full meter for a mini turbo. |
+| AI field | `race_simulation.dart` | Bots drive the circuit's real curvature — brake for corners, take the inside line, skill set by circuit difficulty, small bounded catch-up. |
+| No-3D fallback | `advancePlayerKinematically` | Where Flutter GPU is unavailable the same tuning drives the player along the spline, so the race still finishes. |
+| Progression | `lib/data/player.dart` | Trophies 3/2/1 for the podium, XP per finish + laps + record, level derived from XP. Fresh saves start at zero. Multiplayer is unranked. |
+| Content | `lib/data/catalog.dart` | 1 kart (Dash; `KartTuning` supports more), 3 circuits gated by trophies. |
+| Settings | `settings_screen.dart` | Volumes, steering mode (buttons / thumb pad), sensitivity, vibration, camera shake, units, graphics tier — all read by something. |
 
-### Verified
+### Tests
 
-- `flutter analyze` — clean across the whole package
-- `flutter test` — **47 tests passing**:
-  - catalogue integrity, progression rules, HUD ordinals, component behaviour
-  - ten covering the race simulation (speed clamp, braking, cornering scrub by
-    handling, boost expiry, lap and position tracking, finish conditions)
-  - **22 layout tests** running every screen at compact (667×375), baseline
-    (844×390), and expanded (1194×834), plus the HUD under a landscape notch.
-    A `RenderFlex` overflow paints a striped bar instead of throwing, so it is
-    invisible unless something looks for it — these do.
-- `flutter build bundle` — every asset path resolves
-- Every screen render-checked at the 844×390 landscape baseline
+`flutter test` — kart tuning and balance, progression and persistence, AI and
+the kinematic fallback, circuit geometry against every kart, audio asset
+existence, HUD states, and layout at six screen sizes for every screen.
 
-### Bugs the checks caught
+### Not done
 
-Found by tests:
+- **Only the turbo item exists.** `RaceItem` lists six; the other five have no
+  pickups or effects. The shop and HUD only ever show turbo.
+- **No on-device tuning pass.** Driving constants were derived and tested in
+  simulation, not feel-tested on hardware. Expect to retune `KartTuning` and the
+  bot `skill` values.
+- **Impact, overtake and lap sounds are the shipped samples pitch-shifted**, not
+  dedicated recordings.
+- **The CREATE assets** in `asset-inventory.md` (app icon, item icons, renders)
+  are still outstanding.
+- **Multiplayer** needs the Firebase project configured; see `multiplayer-setup.md`.
 
-1. `PlayerState.purchase` charged twice for an already-owned kart. Now returns early when the kart is already unlocked.
-2. `_LockOverlay` overflowed its 132dp card on a two-word unlock label ("24 trophies"). Now wraps.
-
-Found by looking at the renders:
-
-3. Kart Select's info panel overflowed — five stat rows plus a header and an action row did not fit, and the SELECT button escaped its card. Rows tightened, stats given the flexible space.
-4. `CustomPaint` with no child and no size collapses to `Size.zero`; the kart previews and turntable were rendering a few pixels wide. Both now `SizedBox.expand`.
-5. The lock overlay blurred the whole card including the kart name, so a locked card showed a price without saying what it bought. Now covers the art only.
-6. Main-menu secondary buttons truncated their labels ("TRAC…", "GARA…"). They now size to content.
-7. The driving controls were untinted Kenney grey, leaving accelerate, brake, and drift distinguishable only by glyph. Each is now tinted to its function.
-
-Found by the layout tests — **nine overflows across five screens**, none of which
-throw at runtime:
-
-8. Kart Select and Character Select stat blocks have a hard minimum height a short landscape screen cannot afford. Both now scale down rather than clip their last rows.
-9. Track Select's footer (trophy, best time, lap count) overran a 248dp card.
-10. Settings' section rail and segmented controls overran a narrow panel.
-11. Results' action row and place title overran at 667dp; the row now wraps and drops icons before labels.
-12. Main Menu was 18px too tall at the baseline size.
-
-### Checking layout
+## Release build
 
 ```sh
-flutter test test/layout_test.dart
+tool/build_release_apk.sh          # one APK per CPU type
+tool/build_release_apk.sh arm64    # one APK, 64-bit ARM phones only (smallest)
 ```
 
-Every screen at three sizes. Run this before any layout change lands.
+For the Play Store build an app bundle instead — Google then serves each phone
+only its own CPU's code, which is smaller still:
+`flutter build appbundle --release --obfuscate --split-debug-info=build/symbols`.
 
-### Rendering screens
+**One-off Android setup** (this machine had none): install the Android SDK
+through Android Studio's SDK Manager (a platform, build-tools, and the NDK
+28.2.13676358), run `flutter config --android-sdk <path to it>` — and make
+`android/local.properties`' `sdk.dir` match, since it currently points at
+Homebrew's `platform-tools` folder — then `flutter doctor --android-licenses`.
 
-```sh
-flutter test test/render/render_screens.dart --tags render
-```
+**Signing.** Without `android/key.properties` the release APK is signed with the
+debug key: it installs and runs, but cannot be published. Create an upload key
+and add `storeFile`, `storePassword`, `keyAlias`, `keyPassword` there (the file
+is gitignored).
 
-Writes PNGs to `build/screens/`. Real fonts are registered through `FontLoader`,
-so the output matches the device. Each screen is stepped frame by frame rather
-than settled — the ambient animation loops never settle.
+**Keep `build/symbols`.** Obfuscated crash reports need it to be readable.
 
-### Not yet built
+What keeps the build small, so it stays that way:
 
-- The 3D race scene (`flutter_scene` + `flutter_scene_rapier`)
-- Audio playback (`flutter_soloud`) — all 568 files are in place, nothing plays yet
-- Character Select screen
-- Persistence — `PlayerState` is in-memory; `shared_preferences` is a dependency but unused
-- The remaining CREATE items: app icon, six item icons, track/kart/portrait renders, trophies, decals
+- `assets/models/` is not in `pubspec.yaml`'s asset list. The build hook
+  compiles those `.glb` files into `flutter_scene_generated/`, which is what
+  `loadScene` reads at runtime; listing the sources too shipped every model
+  twice (about 3.5 MB).
+- `uses-material-design` is off — nothing uses the Material icon font.
+- R8 and resource shrinking are on for release (`android/app/build.gradle.kts`).
+- The kart itself is the biggest file (94k vertices, 8.4 MB compiled). Reducing
+  that needs the model reworked in a 3D tool, not a build flag.
+- Music is the next biggest: `menu-racing.ogg` is 500 kbps for a short loop and
+  re-encoding it near 96 kbps would save about 0.6 MB. Needs `ffmpeg`.
+

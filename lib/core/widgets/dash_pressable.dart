@@ -1,7 +1,7 @@
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:dashkart/core/audio/audio_manager.dart';
+import 'package:dashkart/core/feedback/haptics.dart';
 import 'package:dashkart/core/theme/theme.dart';
 
 /// Shared press behaviour for every DashKart control.
@@ -19,7 +19,7 @@ class DashPressable extends StatefulWidget {
     this.onPressed,
     this.onLongPress,
     this.enabled = true,
-    this.haptic = HapticFeedback.lightImpact,
+    this.haptic = Haptics.light,
     this.semanticLabel,
   });
 
@@ -28,8 +28,9 @@ class DashPressable extends StatefulWidget {
   final VoidCallback? onLongPress;
   final bool enabled;
 
-  /// Called once on press-down. Null disables haptics for this control.
-  final Future<void> Function()? haptic;
+  /// Called once on press-down. Null disables haptics for this control
+  /// outright; the default honours the vibration setting through [Haptics].
+  final VoidCallback? haptic;
   final String? semanticLabel;
 
   @override

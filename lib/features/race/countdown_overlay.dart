@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'package:dashkart/core/theme/theme.dart';
-import 'package:dashkart/core/widgets/dash_outlined_text.dart';
+import 'package:dashkart/core/widgets/dash_brawl_ink_text.dart';
 
 /// The 3 · 2 · 1 · GO! overlay.
 ///
@@ -109,22 +109,15 @@ class _CountdownOverlayState extends State<CountdownOverlay>
                     opacity: opacity,
                     child: Transform.scale(
                       scale: scale,
-                      child: DashOutlinedText(
+                      // The same hard black ink outline every other title in
+                      // the game wears. It used to carry a dark navy outline,
+                      // which sank into the scene behind it — the one piece
+                      // of text that has to read instantly was the least
+                      // legible thing on screen.
+                      child: BrawlTitleText(
                         label,
-                        style: DashType.countdown.copyWith(
-                          color: color,
-                          shadows: [
-                            Shadow(
-                              color: color.withValues(alpha: 0.7),
-                              blurRadius: 40,
-                            ),
-                            const Shadow(
-                              color: DashColors.darkNavy,
-                              blurRadius: 0,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
+                        fontSize: isGo ? 104 : 120,
+                        color: color,
                       ),
                     ),
                   ),

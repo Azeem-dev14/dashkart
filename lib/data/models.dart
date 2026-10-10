@@ -69,38 +69,6 @@ class Kart {
   int stat(KartStat s) => stats[s] ?? 0;
 }
 
-class Racer {
-  const Racer({
-    required this.id,
-    required this.name,
-    required this.personality,
-    required this.model,
-    required this.signatureKartId,
-    required this.bonus,
-    this.accessory,
-  });
-
-  final String id;
-  final String name;
-  final String personality;
-  final String model;
-  final String signatureKartId;
-
-  /// The stat this racer nudges, and by how much.
-  final (KartStat, int) bonus;
-
-  /// Optional accessory GLB layered on the character, used to differentiate
-  /// silhouettes within a single art style.
-  final String? accessory;
-
-  String get modelPath => 'assets/models/characters/$model.glb';
-
-  String get bonusLabel {
-    final (stat, amount) = bonus;
-    return '${amount > 0 ? '+' : ''}$amount ${stat.label}';
-  }
-}
-
 enum TrackDifficulty {
   easy('Easy', 1),
   medium('Medium', 2),
@@ -136,36 +104,7 @@ class Track {
   String get number => index.toString().padLeft(2, '0');
 }
 
-/// The six original items.
-enum RaceItem {
-  turboCell('Turbo Cell', 'Speed boost', Color(0xFFFF8A2B), DashIcons.boost),
-  shockPulse(
-    'Shock Pulse',
-    'Slows nearby racers',
-    Color(0xFF22D3FF),
-    DashIcons.burst,
-  ),
-  oilBlob('Oil Blob', 'Drops a trap', Color(0xFF5B2BA8), DashIcons.item),
-  shieldOrb('Shield Orb', 'Protection', Color(0xFF0B95F0), DashIcons.shield),
-  rocketDrone(
-    'Rocket Drone',
-    'Targets a racer',
-    Color(0xFFFF3D9A),
-    DashIcons.target,
-  ),
-  warpDash(
-    'Warp Dash',
-    'Short burst forward',
-    Color(0xFF9FF23A),
-    DashIcons.acceleration,
-  );
-
-  const RaceItem(this.label, this.effect, this.tint, this.icon);
-
-  final String label;
-  final String effect;
-
-  /// Accent colour for the HUD slot and the world effect.
-  final Color tint;
-  final DashIcons icon;
-}
+/// Whether the player is holding a turbo to fire. The turbo is the only item
+/// in the game: it is picked up on the road and fired from the TURBO button,
+/// so the state is just held or not.
+enum ItemSlotState { empty, ready }

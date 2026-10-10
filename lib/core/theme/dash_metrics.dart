@@ -11,10 +11,6 @@ abstract final class DashSpace {
   static const x5 = 20.0;
   static const x6 = 24.0;
   static const x8 = 32.0;
-  static const x10 = 40.0;
-  static const x12 = 48.0;
-  static const x16 = 64.0;
-  static const x20 = 80.0;
 
   /// Screen gutter. Drops to [x4] on compact widths.
   static const gutter = x6;
@@ -32,7 +28,6 @@ abstract final class DashRadius {
   static const xl = Radius.circular(14);
   static const pill = Radius.circular(999);
 
-  static const smAll = BorderRadius.all(sm);
   static const mdAll = BorderRadius.all(md);
   static const lgAll = BorderRadius.all(lg);
   static const xlAll = BorderRadius.all(xl);
@@ -42,14 +37,9 @@ abstract final class DashRadius {
 /// Outline widths. Every chunky shape — buttons, cards, dialogs, HUD pills —
 /// sits on a thick ink border matching the Play Button recipe.
 abstract final class DashStroke {
-  static const thin = 1.5;
   static const regular = 2.0;
   static const thick = 2.5;
   static const chunky = 3.5;
-
-  /// The light inner ring set just inside the ink outline. It is what makes a
-  /// shape read as an applied sticker rather than a bordered box.
-  static const innerRing = 1.5;
 }
 
 /// Icon sizes. Default 20.
@@ -113,7 +103,6 @@ abstract final class DashElevation {
 
 /// Touch target sizes for driving controls and HUD slots.
 abstract final class DashTouch {
-  static const min = 48.0;
   static const itemSlot = 72.0;
   static const drift = 72.0;
   static const accelerate = 96.0;
@@ -132,24 +121,15 @@ class DashBreakpoint {
     return DashBreakpoint(width: size.width, height: size.height);
   }
 
-  static bool isPortrait(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return size.width < size.height;
-  }
-
   bool get isCompact => width <= compact;
-  bool get isRegular => width > compact && width <= maxContentWidth;
-  bool get isExpanded => width > maxContentWidth;
 
   double get gutter => isCompact ? DashSpace.gutterCompact : DashSpace.gutter;
-  double get maxContentWidth => 1100.0;
 
   static const compact = 740.0;
-  static const maxContentWidthValue = 1100.0;
 }
 
 /// Notch-aware edge margins for screens that hand-place HUD-style corner
-/// widgets (main menu, kart select) instead of using [DashScaffold]'s own
+/// widgets (main menu, kart select) instead of using [DashBrawlScreen]'s own
 /// padding. A side with a real notch/Dynamic Island inset gets `max(inset,
 /// 42)` clearance; a clear side gets the tighter compact/regular value.
 ///

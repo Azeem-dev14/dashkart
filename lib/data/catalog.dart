@@ -1,6 +1,10 @@
 import 'package:dashkart/data/models.dart';
 
 /// The DashKart content catalogue.
+///
+/// One kart — Dash — and three circuits. The kart roster is a
+/// deliberate choice, not a gap: [KartTuning] and the unlock rules already
+/// support more, so adding one is a catalogue entry and nothing else.
 abstract final class Catalog {
   // --- Karts ---------------------------------------------------------------
   static const karts = <Kart>[
@@ -11,47 +15,20 @@ abstract final class Catalog {
       model: 'dashkart',
       unlock: Starter(),
       stats: {
-        KartStat.speed: 7,
+        KartStat.speed: 6,
         KartStat.acceleration: 7,
         KartStat.handling: 7,
         KartStat.drift: 6,
-        KartStat.weight: 5,
+        KartStat.weight: 6,
       },
     ),
   ];
 
-  // --- Racers --------------------------------------------------------------
-  static const racers = <Racer>[
-    Racer(
-      id: 'dash',
-      name: 'Classic Dash',
-      personality: 'Eager rookie, all heart',
-      model: 'character-male-a',
-      signatureKartId: 'dash',
-      bonus: (KartStat.acceleration, 1),
-    ),
-    Racer(
-      id: 'cyber-dash',
-      name: 'Cyber Dash',
-      personality: 'Neon-charged speed demon',
-      model: 'character-male-d',
-      signatureKartId: 'dash',
-      bonus: (KartStat.speed, 2),
-      accessory: 'aid-sunglasses',
-    ),
-    Racer(
-      id: 'astro-dash',
-      name: 'Astro Dash',
-      personality: 'Cosmic drifter from orbit',
-      model: 'character-female-a',
-      signatureKartId: 'dash',
-      bonus: (KartStat.drift, 2),
-      accessory: 'aid-glasses',
-    ),
-  ];
-
   // --- Levels --------------------------------------------------------------
-  // Five circuits, easy to hard, each a distinct biome.
+  // Three circuits, easy to hard, each a distinct biome. The unlock
+  // thresholds are solved against the reward curve in `PlayerState` — see
+  // `progression_test.dart`, which checks the ladder is reachable and that
+  // nothing is gated behind an unreasonable grind.
   static const tracks = <Track>[
     Track(
       id: 'dash-valley',
@@ -63,46 +40,39 @@ abstract final class Catalog {
       unlock: Starter(),
     ),
     Track(
-      id: 'neon-circuit',
-      index: 2,
-      name: 'Neon Circuit',
-      environment: 'Night city',
-      difficulty: TrackDifficulty.easy,
-      laps: 3,
-      unlock: Starter(),
-    ),
-    Track(
       id: 'desert-rush',
-      index: 3,
+      index: 2,
       name: 'Desert Rush',
       environment: 'Desert canyon',
       difficulty: TrackDifficulty.medium,
       laps: 3,
-      unlock: TrophyCount(3),
+      unlock: TrophyCount(6),
     ),
     Track(
       id: 'frozen-peak',
-      index: 4,
+      index: 3,
       name: 'Frozen Peak',
       environment: 'Snow and ice',
       difficulty: TrackDifficulty.hard,
       laps: 3,
-      unlock: TrophyCount(6),
-    ),
-    Track(
-      id: 'cyber-coast',
-      index: 5,
-      name: 'Cyber Coast',
-      environment: 'Coastal city',
-      difficulty: TrackDifficulty.hard,
-      laps: 4,
-      unlock: TrophyCount(10),
+      unlock: TrophyCount(14),
     ),
   ];
 
-  static Kart kartById(String id) => karts.firstWhere((k) => k.id == id);
+  /// The kart with [id], or the starter kart if nothing matches — a saved
+  /// selection naming content that no longer exists must not crash the game
+  /// on launch, which `firstWhere` without an `orElse` would.
+  static Kart kartById(String id) =>
+      karts.firstWhere((k) => k.id == id, orElse: () => karts.first);
 
-  static Racer racerById(String id) => racers.firstWhere((r) => r.id == id);
+  static Track trackById(String id) =>
+      tracks.firstWhere((t) => t.id == id, orElse: () => tracks.first);
 
-  static Track trackById(String id) => tracks.firstWhere((t) => t.id == id);
+  /// The circuit after [track] in running order, wrapping back to the first —
+  /// what the results screen's NEXT RACE advances to.
+  static Track nextTrack(Track track) {
+    final i = tracks.indexWhere((t) => t.id == track.id);
+    if (i < 0) return tracks.first;
+    return tracks[(i + 1) % tracks.length];
+  }
 }

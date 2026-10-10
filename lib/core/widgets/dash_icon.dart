@@ -6,29 +6,18 @@ import 'package:dashkart/core/theme/theme.dart';
 /// Renders a [DashIcons] at [size], tinted to [color].
 ///
 /// The source art is white with a soft white-to-grey gradient. A flat
-/// [BlendMode.srcIn] tint discards that shading, which is what an icon wants;
-/// larger control art keeps it via [DashIcon.shaded].
+/// [BlendMode.srcIn] tint discards that shading, which is what an icon wants.
 class DashIcon extends StatelessWidget {
   const DashIcon(
     this.icon, {
     super.key,
     this.size = DashIconSize.md,
     this.color = DashColors.textPrimary,
-  }) : _shaded = false;
-
-  /// Keeps the source gradient, multiplying it by [color] so the art still
-  /// reads as a lit, three-dimensional object. Use for large control faces.
-  const DashIcon.shaded(
-    this.icon, {
-    super.key,
-    this.size = DashIconSize.md,
-    this.color = DashColors.textPrimary,
-  }) : _shaded = true;
+  });
 
   final DashIcons icon;
   final double size;
   final Color color;
-  final bool _shaded;
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +25,7 @@ class DashIcon extends StatelessWidget {
       icon.path,
       width: size,
       height: size,
-      colorFilter: ColorFilter.mode(
-        color,
-        _shaded ? BlendMode.modulate : BlendMode.srcIn,
-      ),
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   }
 }

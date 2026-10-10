@@ -3,28 +3,44 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:dashkart/core/audio/audio_manager.dart';
+import 'package:dashkart/core/feedback/haptics.dart';
 import 'package:dashkart/data/player.dart';
 import 'package:dashkart/core/theme/theme.dart';
 import 'package:dashkart/core/widgets/components.dart';
 import 'package:dashkart/core/scaffold/dash_brawl_screen.dart';
+import 'package:dashkart/features/settings/graphics_tier.dart';
+import 'package:dashkart/features/settings/steering_mode.dart';
+
+// Re-exported: both are read by the race scene and the HUD, so they live in
+// their own files rather than behind a screen — but every caller that
+// reaches them through the settings still can.
+export 'package:dashkart/features/settings/graphics_tier.dart';
+export 'package:dashkart/features/settings/steering_mode.dart';
 
 /// Player-facing settings.
+///
+/// Every field here is read by something. Before, five of them — tilt,
+/// sensitivity, vibration, camera shake and the graphics tier — persisted
+/// faithfully and were never looked at again, so most of this screen was a
+/// set of controls that did nothing.
 class GameSettings extends ChangeNotifier {
   static const _kMusicVol = 'dashkart_settings_music_vol';
   static const _kSfxVol = 'dashkart_settings_sfx_vol';
-  static const _kTilt = 'dashkart_settings_tilt';
+  static const _kSteering = 'dashkart_settings_steering_mode';
   static const _kSteerSens = 'dashkart_settings_steer_sens';
   static const _kVibration = 'dashkart_settings_vibration';
-  static const _kCamShake = 'dashkart_settings_cam_shake';
+  // A new key on purpose: shake used to default on, and a saved `true` would
+  // otherwise keep it on for everyone who had ever opened Settings.
+  static const _kCamShake = 'dashkart_settings_cam_shake_v2';
   static const _kUseMph = 'dashkart_settings_use_mph';
   static const _kGraphics = 'dashkart_settings_graphics';
 
   double musicVolume = 0.7;
   double sfxVolume = 0.85;
-  bool tiltSteering = false;
+  SteeringMode steering = SteeringMode.buttons;
   double steeringSensitivity = 0.6;
   bool vibration = true;
-  bool cameraShake = true;
+  bool cameraShake = false;
   bool useMph = false;
   GraphicsTier graphics = GraphicsTier.medium;
 
@@ -33,25 +49,32 @@ class GameSettings extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       musicVolume = prefs.getDouble(_kMusicVol) ?? musicVolume;
       sfxVolume = prefs.getDouble(_kSfxVol) ?? sfxVolume;
-      tiltSteering = prefs.getBool(_kTilt) ?? tiltSteering;
       steeringSensitivity = prefs.getDouble(_kSteerSens) ?? steeringSensitivity;
       vibration = prefs.getBool(_kVibration) ?? vibration;
       cameraShake = prefs.getBool(_kCamShake) ?? cameraShake;
       useMph = prefs.getBool(_kUseMph) ?? useMph;
-      final gIdx = prefs.getInt(_kGraphics);
-      if (gIdx != null && gIdx >= 0 && gIdx < GraphicsTier.values.length) {
-        graphics = GraphicsTier.values[gIdx];
-      }
+      steering =
+          _enumAt(SteeringMode.values, prefs.getInt(_kSteering)) ?? steering;
+      graphics =
+          _enumAt(GraphicsTier.values, prefs.getInt(_kGraphics)) ?? graphics;
       notifyListeners();
     } catch (_) {}
   }
+
+  /// A stored index is only usable if it is still in range — a build that
+  /// removed an enum value would otherwise throw on load and lose every
+  /// other setting with it.
+  static T? _enumAt<T>(List<T> values, int? index) =>
+      index != null && index >= 0 && index < values.length
+      ? values[index]
+      : null;
 
   Future<void> save() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kMusicVol, musicVolume);
       await prefs.setDouble(_kSfxVol, sfxVolume);
-      await prefs.setBool(_kTilt, tiltSteering);
+      await prefs.setInt(_kSteering, steering.index);
       await prefs.setDouble(_kSteerSens, steeringSensitivity);
       await prefs.setBool(_kVibration, vibration);
       await prefs.setBool(_kCamShake, cameraShake);
@@ -72,29 +95,35 @@ class GameSettings extends ChangeNotifier {
 /// `_onSettingsChanged` listener used to.
 final gameSettingsProvider = ChangeNotifierProvider<GameSettings>((ref) {
   final settings = GameSettings();
-  void pushVolumes() => AudioManager.instance.setVolumes(
-    music: settings.musicVolume,
-    sfx: settings.sfxVolume,
-  );
-  settings.addListener(pushVolumes);
-  settings.load().then((_) => pushVolumes());
-  ref.onDispose(() => settings.removeListener(pushVolumes));
-  ref.onDispose(settings.dispose);
+  // Audio volumes and the haptics gate are consumed by singletons with no
+  // `ref` of their own — the audio engine and physics callbacks — so they are
+  // pushed out here on load and on every change, rather than read back.
+  void push() {
+    AudioManager.instance.setVolumes(
+      music: settings.musicVolume,
+      sfx: settings.sfxVolume,
+    );
+    Haptics.enabled = settings.vibration;
+  }
+
+  settings.addListener(push);
+  settings.load().then((_) => push());
+  ref.onDispose(() => settings.removeListener(push));
   return settings;
 });
 
-/// Chosen on first launch from a startup benchmark, then user-overridable.
-/// The low tier targets 60fps on a mid-range 2021 Android.
-enum GraphicsTier {
-  low('Low', 'Render 70%, no shadows or bloom, 120 particles'),
-  medium('Medium', 'Render 85%, directional shadows, bloom, 300 particles'),
-  high('High', 'Full render, all shadows, god rays and DoF, 600 particles');
+// --- Theme --------------------------------------------------------------------
+//
+// The settings screen shares the look of the shop, the pause menu and the
+// results board: ink-outlined LilitaOne text, black-bordered panels on the
+// blue gradient with a hard bevel under them, and the same arcade tones for
+// anything pressable. Selected states are yellow, "on" is green, destructive
+// is red — the same meanings those screens already use.
 
-  const GraphicsTier(this.label, this.detail);
-
-  final String label;
-  final String detail;
-}
+const _tabGradient = [Color(0xFF34479F), Color(0xFF1B2A86)];
+const _bevel = BrawlPanel.bevel;
+const _softText = BrawlPanel.softText;
+const _gold = BrawlPanel.gold;
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key, this.onBack});
@@ -119,35 +148,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = DashBreakpoint.of(context).isCompact;
     return DashBrawlScreen(
       title: 'Settings',
       onBack: widget.onBack,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: DashBreakpoint.of(context).isCompact ? 156 : 200,
-            child: ListView.builder(
-              itemCount: _sections.length,
-              itemBuilder: (context, i) => _SectionTab(
-                label: _sections[i].$1,
-                icon: _sections[i].$2,
-                active: i == _section,
-                onTap: () => setState(() => _section = i),
+      child: Padding(
+        // Room for the bevel under the plates, which would otherwise be
+        // clipped by the screen's own margin.
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: compact ? 148 : 190,
+              child: ListView.builder(
+                padding: const EdgeInsets.only(bottom: 6),
+                itemCount: _sections.length,
+                itemBuilder: (context, i) => _SectionTab(
+                  label: _sections[i].$1,
+                  icon: _sections[i].$2,
+                  active: i == _section,
+                  compact: compact,
+                  onTap: () => setState(() => _section = i),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: DashSpace.x4),
-          Expanded(
-            child: DashCard(
-              variant: DashCardVariant.raised,
-              child: AnimatedSwitcher(
-                duration: DashMotionScope.duration(context, DashMotion.fast),
-                child: KeyedSubtree(key: ValueKey(_section), child: _body()),
+            SizedBox(width: compact ? DashSpace.x3 : DashSpace.x4),
+            Expanded(
+              child: BrawlPanel(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 12 : 18,
+                  vertical: 6,
+                ),
+                child: AnimatedSwitcher(
+                  duration: DashMotionScope.duration(context, DashMotion.fast),
+                  child: KeyedSubtree(key: ValueKey(_section), child: _body()),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -155,7 +195,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _body() {
     // Riverpod already rebuilds this State whenever GameSettings notifies
     // (that's what `ref.watch` subscribes to), so `s.update(...)` needs no
-    // wrapping `setState` the way the old `PlayerScope`-style access did.
+    // wrapping `setState`.
     final s = ref.watch(gameSettingsProvider);
     return switch (_section) {
       0 => ListView(
@@ -178,19 +218,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           _SegmentRow(
             label: 'Steering',
-            options: const ['Touch', 'Tilt'],
-            index: s.tiltSteering ? 1 : 0,
-            onChanged: (i) => s.update(() => s.tiltSteering = i == 1),
+            options: [for (final m in SteeringMode.values) m.label],
+            index: s.steering.index,
+            onChanged: (i) =>
+                s.update(() => s.steering = SteeringMode.values[i]),
           ),
           _SliderRow(
             label: 'Sensitivity',
             value: s.steeringSensitivity,
             onChanged: (v) => s.update(() => s.steeringSensitivity = v),
           ),
+          _InfoRow(
+            text: switch (s.steering) {
+              SteeringMode.buttons =>
+                'Two held buttons under your left thumb. Sensitivity sets '
+                    'how quickly they reach full lock.',
+              SteeringMode.analog =>
+                'Press the pad under your left thumb and slide. How far you '
+                    'slide is how much lock you get.',
+            },
+          ),
           const _InfoRow(
             text:
-                'Control positions can be moved during a race from the '
-                'pause menu.',
+                'Hold DRIFT through a corner to slide, then release it once '
+                'the meter fills for a mini turbo.',
           ),
         ],
       ),
@@ -223,7 +274,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onChanged: (i) =>
                 s.update(() => s.graphics = GraphicsTier.values[i]),
           ),
+          // Generated from the tier's own numbers, so the description cannot
+          // promise something the renderer does not do.
           _InfoRow(text: s.graphics.detail),
+          const _InfoRow(text: 'Takes effect on the next race you start.'),
         ],
       ),
       4 => _AccountSection(onReset: _confirmReset),
@@ -245,75 +299,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
+/// A section tab on the left rail. The selected one lights up yellow, the way
+/// an equipped card does elsewhere.
 class _SectionTab extends StatelessWidget {
   const _SectionTab({
     required this.label,
     required this.icon,
     required this.active,
+    required this.compact,
     required this.onTap,
   });
 
   final String label;
   final DashIcons icon;
   final bool active;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return DashPressable(
-      onPressed: onTap,
-      semanticLabel: label,
-      builder: (context, press, _) => AnimatedContainer(
-        duration: DashMotionScope.duration(context, DashMotion.fast),
-        margin: const EdgeInsets.only(bottom: DashSpace.x2),
-        padding: const EdgeInsets.symmetric(
-          horizontal: DashSpace.x4,
-          vertical: DashSpace.x3,
-        ),
-        decoration: BoxDecoration(
-          color: active ? DashColors.surfaceRaised : DashColors.surface,
-          borderRadius: DashRadius.mdAll,
-          border: Border.all(
-            color: DashColors.pureBlack,
-            width: active ? 2.5 : 2.0,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x8A000000),
-              offset: Offset(0, 3),
-              blurRadius: 6,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DashPressable(
+        onPressed: onTap,
+        semanticLabel: label,
+        builder: (context, press, _) => Transform.translate(
+          // Sinks into its own bevel while pressed.
+          offset: Offset(0, press * 3),
+          child: BrawlPanel(
+            colors: active ? BrawlButtonTone.yellow.gradient : _tabGradient,
+            radius: 12,
+            borderWidth: 3,
+            depth: 4 - press * 3,
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 10 : 14,
+              vertical: compact ? 8 : 9,
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            DashIcon(
-              icon,
-              size: DashIconSize.md,
-              color: active ? DashColors.orange.s500 : DashColors.textTertiary,
-            ),
-            const SizedBox(width: DashSpace.x3),
-            Flexible(
-              child: Text(
-                label,
-                style: DashType.h3.copyWith(
-                  fontSize: 16,
-                  color: active
-                      ? DashColors.textPrimary
-                      : DashColors.textSecondary,
+            child: Row(
+              children: [
+                DashIcon(
+                  icon,
+                  size: compact ? DashIconSize.sm : DashIconSize.md,
+                  color: active ? DashColors.textPrimary : _softText,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+                SizedBox(width: compact ? 8 : 10),
+                Expanded(
+                  child: BrawlInkText(
+                    label.toUpperCase(),
+                    fontSize: compact ? 13 : 15,
+                    weight: BrawlInkWeight.heavy,
+                    color: active ? DashColors.textPrimary : _softText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// A settings row. Composed, never a Material ListTile.
+/// A settings row: an inked label, then the control. Separated from the next
+/// by a faint rule rather than a box of its own.
 class _Row extends StatelessWidget {
   const _Row({required this.label, required this.child, this.icon});
 
@@ -323,24 +373,29 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = DashBreakpoint.of(context).isCompact;
     return Container(
-      height: 56,
+      height: compact ? 54 : 60,
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: DashColors.stroke)),
+        border: Border(bottom: BorderSide(color: Color(0x33FFFFFF))),
       ),
       child: Row(
         children: [
           if (icon != null) ...[
-            DashIcon(icon!, size: DashIconSize.md),
-            const SizedBox(width: DashSpace.x3),
+            DashIcon(icon!, size: DashIconSize.md, color: _softText),
+            const SizedBox(width: DashSpace.x2),
           ],
           SizedBox(
-            width: 118,
-            child: Text(
-              label,
-              style: DashType.body,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            width: compact ? 104 : 136,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: BrawlInkText(
+                label.toUpperCase(),
+                fontSize: 14,
+                weight: BrawlInkWeight.heavy,
+                maxLines: 1,
+              ),
             ),
           ),
           Expanded(child: child),
@@ -376,9 +431,11 @@ class _SliderRow extends StatelessWidget {
           const SizedBox(width: DashSpace.x3),
           SizedBox(
             width: 44,
-            child: Text(
+            child: BrawlInkText(
               '${(value * 100).round()}',
-              style: DashType.statValue,
+              fontSize: 17,
+              weight: BrawlInkWeight.heavy,
+              color: _gold,
               textAlign: TextAlign.right,
             ),
           ),
@@ -396,19 +453,23 @@ class DashSlider extends StatelessWidget {
   final double value;
   final ValueChanged<double> onChanged;
 
+  /// Space reserved at each end so the knob stays inside the track's width.
+  static const _inset = 14.0;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, box) {
-        void handle(Offset local) =>
-            onChanged((local.dx / box.maxWidth).clamp(0.0, 1.0));
+        void handle(Offset local) => onChanged(
+          ((local.dx - _inset) / (box.maxWidth - _inset * 2)).clamp(0.0, 1.0),
+        );
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (d) => handle(d.localPosition),
           onHorizontalDragUpdate: (d) => handle(d.localPosition),
           child: SizedBox(
-            height: 32,
+            height: 40,
             child: CustomPaint(painter: _SliderPainter(value.clamp(0.0, 1.0))),
           ),
         );
@@ -424,40 +485,64 @@ class _SliderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    const inset = DashSlider._inset;
     final cy = size.height / 2;
     final track = RRect.fromLTRBR(
-      0,
-      cy - 5,
-      size.width,
-      cy + 5,
-      const Radius.circular(5),
+      inset - 6,
+      cy - 8,
+      size.width - inset + 6,
+      cy + 8,
+      const Radius.circular(8),
     );
-    canvas.drawRRect(track, Paint()..color = DashColors.surfaceSunken);
 
-    final w = size.width * value;
+    // Sunken groove with a black ink border.
+    canvas.drawRRect(track, Paint()..color = _bevel);
+
+    final x = inset + (size.width - inset * 2) * value;
     canvas.save();
     canvas.clipRRect(track);
     canvas.drawRect(
-      Rect.fromLTWH(0, cy - 5, w, 10),
+      Rect.fromLTRB(track.left, track.top, x, track.bottom),
       Paint()
-        ..shader = const LinearGradient(
-          colors: DashGradients.speed,
-        ).createShader(Offset.zero & size),
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: BrawlButtonTone.green.gradient,
+        ).createShader(track.outerRect),
+    );
+    // Specular streak along the top of the fill.
+    canvas.drawRect(
+      Rect.fromLTRB(track.left, track.top + 2, x, track.top + 5),
+      Paint()..color = const Color(0x55FFFFFF),
     );
     canvas.restore();
-
-    canvas.drawCircle(
-      Offset(w, cy),
-      11,
-      Paint()..color = DashColors.textPrimary,
-    );
-    canvas.drawCircle(
-      Offset(w, cy),
-      11,
+    canvas.drawRRect(
+      track,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = DashColors.blue.s600,
+        ..strokeWidth = 3
+        ..color = DashColors.pureBlack,
+    );
+
+    // Knob: cream face, ink ring, hard drop under it.
+    canvas.drawCircle(Offset(x, cy + 2.5), 13, Paint()..color = _bevel);
+    canvas.drawCircle(
+      Offset(x, cy),
+      13,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFFFFF), Color(0xFFD6DEFF)],
+        ).createShader(Rect.fromCircle(center: Offset(x, cy), radius: 13)),
+    );
+    canvas.drawCircle(
+      Offset(x, cy),
+      13,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = DashColors.pureBlack,
     );
   }
 
@@ -488,26 +573,58 @@ class _ToggleRow extends StatelessWidget {
           builder: (context, press, _) => AnimatedContainer(
             duration: DashMotionScope.duration(context, DashMotion.fast),
             curve: DashMotionScope.curve(context, DashMotion.fastCurve),
-            width: 60,
-            height: 32,
+            width: 72,
+            height: 36,
             padding: const EdgeInsets.all(3),
             alignment: value ? Alignment.centerRight : Alignment.centerLeft,
             decoration: BoxDecoration(
-              color: value
-                  ? DashColors.neonGreen.withValues(alpha: 0.28)
-                  : DashColors.surfaceSunken,
               borderRadius: DashRadius.pillAll,
-              border: Border.all(
-                color: value ? DashColors.neonGreen : DashColors.stroke,
+              border: Border.all(color: DashColors.pureBlack, width: 3),
+              boxShadow: const [BoxShadow(color: _bevel, offset: Offset(0, 3))],
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: value
+                    ? BrawlButtonTone.green.gradient
+                    : BrawlButtonTone.grey.gradient,
               ),
             ),
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: value ? DashColors.neonGreen : DashColors.textTertiary,
-                shape: BoxShape.circle,
-              ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // The state, spelled out on the side the knob is not on —
+                // colour alone is a poor way to say on or off.
+                Align(
+                  alignment: value
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: BrawlInkText(
+                      value ? 'ON' : 'OFF',
+                      fontSize: 11,
+                      weight: BrawlInkWeight.heavy,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: value
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: DashColors.textPrimary,
+                      border: Border.all(
+                        color: DashColors.pureBlack,
+                        width: 2.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -531,15 +648,19 @@ class _SegmentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = DashBreakpoint.of(context).isCompact;
     return _Row(
       label: label,
       child: Align(
         alignment: Alignment.centerLeft,
+        // A sunken tray the options sit in; the chosen one pops out of it in
+        // yellow.
         child: Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: DashColors.surfaceSunken,
-            borderRadius: DashRadius.pillAll,
+            color: _bevel,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DashColors.pureBlack, width: 3),
           ),
           child: Wrap(
             children: [
@@ -552,23 +673,28 @@ class _SegmentRow extends StatelessWidget {
                       context,
                       DashMotion.fast,
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DashSpace.x3,
-                      vertical: DashSpace.x2,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 10 : 14,
+                      vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      gradient: i == index
-                          ? const LinearGradient(colors: DashGradients.speed)
+                      borderRadius: BorderRadius.circular(9),
+                      border: i == index
+                          ? Border.all(color: DashColors.pureBlack, width: 2)
                           : null,
-                      borderRadius: DashRadius.pillAll,
+                      gradient: i == index
+                          ? LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: BrawlButtonTone.yellow.gradient,
+                            )
+                          : null,
                     ),
-                    child: Text(
+                    child: BrawlInkText(
                       options[i].toUpperCase(),
-                      style: DashType.label.copyWith(
-                        color: i == index
-                            ? DashColors.textPrimary
-                            : DashColors.textTertiary,
-                      ),
+                      fontSize: compact ? 12 : 13,
+                      weight: BrawlInkWeight.heavy,
+                      color: i == index ? DashColors.textPrimary : _softText,
                     ),
                   ),
                 ),
@@ -588,17 +714,25 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: DashSpace.x4),
+      padding: const EdgeInsets.symmetric(vertical: DashSpace.x3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const DashRasterIcon(
             DashRasterIcons.info,
             size: DashIconSize.sm,
-            color: DashColors.textTertiary,
+            color: _softText,
           ),
           const SizedBox(width: DashSpace.x3),
-          Expanded(child: Text(text, style: DashType.bodySm)),
+          Expanded(
+            child: BrawlInkText(
+              text,
+              fontSize: 12,
+              weight: BrawlInkWeight.light,
+              color: _softText,
+              letterSpacing: 0.3,
+            ),
+          ),
         ],
       ),
     );
@@ -613,27 +747,44 @@ class _AccountSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(playerProvider);
+    final compact = DashBreakpoint.of(context).isCompact;
+
+    Widget value(String text) => Align(
+      alignment: Alignment.centerLeft,
+      child: BrawlInkText(
+        text,
+        fontSize: 17,
+        weight: BrawlInkWeight.heavy,
+        color: _gold,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
     return ListView(
       children: [
-        _Row(
-          label: 'Profile',
-          child: Text(player.name, style: DashType.h3.copyWith(fontSize: 16)),
-        ),
+        _Row(label: 'Profile', child: value(player.name.toUpperCase())),
         _Row(
           label: 'Level',
-          child: Text('${player.level}', style: DashType.statValue),
+          child: value(
+            '${player.level}  ·  ${(player.levelProgress * 100).round()}%',
+          ),
         ),
-        const SizedBox(height: DashSpace.x5),
+        _Row(label: 'Trophies', child: value('${player.trophies}')),
+        _Row(label: 'Races', child: value('${player.racesFinished}')),
+        const SizedBox(height: DashSpace.x4),
         Align(
           alignment: Alignment.centerLeft,
-          child: DashButton(
-            label: 'Reset Progress',
-            icon: DashIcons.restart,
-            variant: DashButtonVariant.danger,
-            size: DashButtonSize.sm,
+          child: BrawlActionButton(
+            label: 'RESET PROGRESS',
+            tone: BrawlButtonTone.red,
+            width: compact ? 190 : 230,
+            height: compact ? 44 : 50,
+            fontSize: compact ? 16 : 18,
             onPressed: onReset,
           ),
         ),
+        const SizedBox(height: DashSpace.x2),
       ],
     );
   }
@@ -673,14 +824,26 @@ class _AboutSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: DashSpace.x2),
       itemCount: _credits.length,
-      separatorBuilder: (_, _) => const SizedBox(height: DashSpace.x4),
+      separatorBuilder: (_, _) => const SizedBox(height: DashSpace.x3),
       itemBuilder: (context, i) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_credits[i].$1.toUpperCase(), style: DashType.label),
+          BrawlInkText(
+            _credits[i].$1.toUpperCase(),
+            fontSize: 14,
+            weight: BrawlInkWeight.heavy,
+            color: _gold,
+          ),
           const SizedBox(height: DashSpace.x1),
-          Text(_credits[i].$2, style: DashType.bodySm),
+          BrawlInkText(
+            _credits[i].$2,
+            fontSize: 12,
+            weight: BrawlInkWeight.light,
+            color: _softText,
+            letterSpacing: 0.3,
+          ),
         ],
       ),
     );
