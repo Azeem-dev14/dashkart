@@ -280,22 +280,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const _InfoRow(text: 'Takes effect on the next race you start.'),
         ],
       ),
-      4 => _AccountSection(onReset: _confirmReset),
+      4 => _AccountSection(
+        onResetProgress: _confirmResetProgress,
+        onResetGame: _confirmResetGame,
+      ),
       _ => const _AboutSection(),
     };
   }
 
-  Future<void> _confirmReset() async {
+  Future<void> _confirmResetProgress() async {
     final player = ref.read(playerProvider);
     final ok = await DashDialog.confirm(
       context,
       title: 'Reset progress?',
       message:
           'Every unlock, trophy, and best time is erased. '
+          'Your racer name will be kept. '
           'This cannot be undone.',
       confirmLabel: 'Reset',
     );
     if (ok) player.resetProgress();
+  }
+
+  Future<void> _confirmResetGame() async {
+    final player = ref.read(playerProvider);
+    final ok = await DashDialog.confirm(
+      context,
+      title: 'Reset game?',
+      message:
+          'All progress, unlocks, records, and your racer profile will be erased. '
+          'The game will restart from the splash screen so a new player can start. '
+          'This cannot be undone.',
+      confirmLabel: 'Reset Game',
+    );
+    if (ok) player.resetGame();
   }
 }
 
@@ -740,9 +758,13 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _AccountSection extends ConsumerWidget {
-  const _AccountSection({required this.onReset});
+  const _AccountSection({
+    required this.onResetProgress,
+    required this.onResetGame,
+  });
 
-  final VoidCallback onReset;
+  final VoidCallback onResetProgress;
+  final VoidCallback onResetGame;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -773,16 +795,33 @@ class _AccountSection extends ConsumerWidget {
         _Row(label: 'Trophies', child: value('${player.trophies}')),
         _Row(label: 'Races', child: value('${player.racesFinished}')),
         const SizedBox(height: DashSpace.x4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: BrawlActionButton(
-            label: 'RESET PROGRESS',
-            tone: BrawlButtonTone.red,
-            width: compact ? 190 : 230,
-            height: compact ? 44 : 50,
-            fontSize: compact ? 16 : 18,
-            onPressed: onReset,
-          ),
+        Wrap(
+          spacing: DashSpace.x3,
+          runSpacing: DashSpace.x3,
+          children: [
+            BrawlActionButton(
+              label: 'RESET PROGRESS',
+              tone: BrawlButtonTone.grey,
+              width: compact ? 190 : 220,
+              height: compact ? 44 : 50,
+              fontSize: compact ? 15 : 17,
+              onPressed: onResetProgress,
+            ),
+            BrawlActionButton(
+              label: 'RESET GAME',
+              tone: BrawlButtonTone.red,
+              width: compact ? 190 : 220,
+              height: compact ? 44 : 50,
+              fontSize: compact ? 15 : 17,
+              onPressed: onResetGame,
+            ),
+          ],
+        ),
+        const SizedBox(height: DashSpace.x3),
+        const _InfoRow(
+          text:
+              'RESET GAME wipes all data and restarts from the splash screen '
+              'so a new player can start fresh on this device.',
         ),
         const SizedBox(height: DashSpace.x2),
       ],

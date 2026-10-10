@@ -180,6 +180,22 @@ class _AppFlowState extends ConsumerState<_AppFlow> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(
+      playerProvider.select((p) => p.needsOnboarding),
+      (previous, next) {
+        if (next &&
+            _stage != _Stage.onboarding &&
+            _stage != _Stage.splash &&
+            _stage != _Stage.loading) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+          AudioManager.instance.stopMusic();
+          setState(() {
+            _stage = _Stage.splash;
+          });
+        }
+      },
+    );
+
     return switch (_stage) {
       _Stage.splash => SplashScreen(
         onDone: () => setState(() => _stage = _Stage.loading),

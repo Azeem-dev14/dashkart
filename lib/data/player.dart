@@ -365,6 +365,22 @@ class PlayerState extends ChangeNotifier {
     notifyListeners();
     save();
   }
+
+  /// Wipes all game progress and the player profile, resetting [needsOnboarding]
+  /// to true so that a new player is prompted for their racer name.
+  void resetGame() {
+    _name = 'Dash';
+    _onboarded = false;
+    _trophies = 0;
+    _xp = 0;
+    _racesFinished = 0;
+    _bestTimes.clear();
+    _bestPositions.clear();
+    _kartId = Catalog.karts.first.id;
+    _trackId = Catalog.tracks.first.id;
+    notifyListeners();
+    save();
+  }
 }
 
 /// Exposes the app's single [PlayerState] instance.

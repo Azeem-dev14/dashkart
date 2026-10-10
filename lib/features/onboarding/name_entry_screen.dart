@@ -28,9 +28,15 @@ class _NameEntryScreenState extends ConsumerState<NameEntryScreen> {
     super.dispose();
   }
 
+  void _dismissKeyboard() {
+    _focus.unfocus();
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+  }
+
   void _continue() {
     final name = _controller.text.trim();
     if (name.isEmpty) return;
+    _dismissKeyboard();
     ref.read(playerProvider).completeOnboarding(name);
     widget.onDone();
   }
@@ -40,40 +46,44 @@ class _NameEntryScreenState extends ConsumerState<NameEntryScreen> {
     final compact = DashBreakpoint.of(context).isCompact;
     final margins = DashSafeMargins.of(context);
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const BrawlLobbyBackdrop(),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: _dismissKeyboard,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const BrawlLobbyBackdrop(),
 
-        // Centered slanted card modal matching Brawl Stars style in golden-yellow
-        Center(
-          child: _SlantedNameCard(
-            controller: _controller,
-            focusNode: _focus,
-            onSubmitted: _continue,
-            compact: compact,
+          // Centered slanted card modal matching Brawl Stars style in golden-yellow
+          Center(
+            child: _SlantedNameCard(
+              controller: _controller,
+              focusNode: _focus,
+              onSubmitted: _dismissKeyboard,
+              compact: compact,
+            ),
           ),
-        ),
 
-        // Bottom-right hero action button (matching Main Menu PLAY placement)
-        Positioned(
-          right: margins.right,
-          bottom: margins.bottom,
-          child: ValueListenableBuilder<TextEditingValue>(
-            valueListenable: _controller,
-            builder: (context, value, _) {
-              final canContinue = value.text.trim().isNotEmpty;
-              return DashRaceButton(
-                label: 'CONTINUE',
-                compact: compact,
-                glow: canContinue,
-                enabled: canContinue,
-                onPressed: canContinue ? _continue : null,
-              );
-            },
+          // Top-right hero action button: visible at all times, never obscured by keyboard
+          Positioned(
+            right: margins.right,
+            top: margins.top,
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _controller,
+              builder: (context, value, _) {
+                final canContinue = value.text.trim().isNotEmpty;
+                return DashRaceButton(
+                  label: 'CONTINUE',
+                  compact: compact,
+                  glow: canContinue,
+                  enabled: canContinue,
+                  onPressed: canContinue ? _continue : null,
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -346,6 +356,7 @@ class _SlantedInputField extends StatelessWidget {
                         autofocus: true,
                         textAlign: TextAlign.start,
                         maxLines: 1,
+                        textInputAction: TextInputAction.done,
                         style: TextStyle(
                           fontFamily: 'LilitaOne',
                           fontSize: compact ? 20.0 : 24.0,
@@ -356,7 +367,13 @@ class _SlantedInputField extends StatelessWidget {
                         cursorWidth: 3.0,
                         backgroundCursorColor: DashColors.pureBlack,
                         selectionColor: const Color(0x553DF2FF),
-                        onSubmitted: (_) => onSubmitted(),
+                        onSubmitted: (_) {
+                          focusNode.unfocus();
+                          SystemChannels.textInput.invokeMethod(
+                            'TextInput.hide',
+                          );
+                          onSubmitted();
+                        },
                         inputFormatters: [LengthLimitingTextInputFormatter(18)],
                       ),
                     ],

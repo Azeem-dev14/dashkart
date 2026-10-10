@@ -323,6 +323,7 @@ void main() {
 
     test('a reset is written through, not just held in memory', () async {
       final player = fresh();
+      player.completeOnboarding('Azeem');
       player.recordResult(
         trackId: 'dash-valley',
         time: const Duration(seconds: 60),
@@ -337,6 +338,37 @@ void main() {
       await loaded.load();
       expect(loaded.trophies, 0);
       expect(loaded.bestTime('dash-valley'), isNull);
+      expect(loaded.name, 'Azeem');
+      expect(loaded.needsOnboarding, isFalse);
+    });
+
+    test('resetGame erases name, sets needsOnboarding true, and persists', () async {
+      final player = fresh();
+      player.completeOnboarding('Speedy');
+      player.recordResult(
+        trackId: 'dash-valley',
+        time: const Duration(seconds: 55),
+        position: 1,
+        laps: 3,
+      );
+      await player.save();
+      expect(player.needsOnboarding, isFalse);
+      expect(player.name, 'Speedy');
+
+      player.resetGame();
+      await player.save();
+
+      expect(player.needsOnboarding, isTrue);
+      expect(player.name, 'Dash');
+      expect(player.trophies, 0);
+      expect(player.bestTime('dash-valley'), isNull);
+
+      final reloaded = PlayerState();
+      await reloaded.load();
+      expect(reloaded.needsOnboarding, isTrue);
+      expect(reloaded.name, 'Dash');
+      expect(reloaded.trophies, 0);
+      expect(reloaded.bestTime('dash-valley'), isNull);
     });
   });
 }

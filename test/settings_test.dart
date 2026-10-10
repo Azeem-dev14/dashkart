@@ -1,6 +1,10 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:dashkart/core/widgets/dash_dialog.dart';
+import 'package:dashkart/data/player.dart';
 import 'package:dashkart/features/settings/settings_screen.dart';
 
 void main() {
@@ -56,5 +60,59 @@ void main() {
     expect(settings.steering, SteeringMode.buttons);
     // …and one bad value must not cost the others.
     expect(settings.musicVolume, closeTo(0.2, 1e-9));
+  });
+
+  testWidgets('Settings account section displays RESET GAME and resets onboarding',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'dashkart_player_name': 'Tester',
+      'dashkart_player_trophies': 10,
+      'dashkart_player_onboarded': true,
+    });
+    final player = PlayerState();
+    await player.load();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          playerProvider.overrideWith((ref) => player),
+        ],
+        child: WidgetsApp(
+          color: const Color(0xFF000000),
+          home: const SettingsScreen(),
+          pageRouteBuilder: <T>(settings, builder) => PageRouteBuilder<T>(
+            settings: settings,
+            pageBuilder: (context, _, _) => builder(context),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap on the ACCOUNT tab
+    await tester.tap(find.text('ACCOUNT'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RESET PROGRESS'), findsOneWidget);
+    expect(find.text('RESET GAME'), findsOneWidget);
+
+    // Tap RESET GAME
+    await tester.tap(find.text('RESET GAME'));
+    await tester.pumpAndSettle();
+
+    // Confirm dialog should be shown
+    expect(find.text('Reset game?'), findsOneWidget);
+
+    // Confirm the reset by tapping the confirm button inside the dialog
+    final confirmBtn = find.descendant(
+      of: find.byType(DashDialog),
+      matching: find.text('RESET GAME'),
+    );
+    await tester.tap(confirmBtn);
+    await tester.pumpAndSettle();
+
+    expect(player.needsOnboarding, isTrue);
+    expect(player.name, 'Dash');
+    expect(player.trophies, 0);
   });
 }
